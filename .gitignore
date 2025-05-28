@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虛擬環境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系統文件
+.DS_Store
+Thumbs.db
+
+# 日誌文件
+*.log
+logs/
+
+# 臨時文件
+tmp/
+temp/
+*.tmp
+
+# Chrome Driver
+chromedriver.exe
+chrome-win64/
+THIRD_PARTY_NOTICES.chromedriver
+LICENSE.chromedriver
+
+# 大型數據文件 (保留示例數據)
+data/raw/*
+!data/raw/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+
+# 運行時生成的文件
+*.csv
+!*sample*.csv
+!taiwan_stock_sample*.csv
+
+# Streamlit 秘密
+.streamlit/secrets.toml
+
+# 環境變量
+.env
+.env.local
+.env.production 
