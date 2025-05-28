@@ -245,13 +245,13 @@ def main():
     # 側邊欄篩選條件
     st.sidebar.markdown('<div class="filter-header">篩選條件設定</div>', unsafe_allow_html=True)
     
-    # ROE 篩選 - 改為滑動條
+    # ROE 篩選 - 改為滑動條，範圍 -100 到 100
     st.sidebar.subheader("📊 ROE 最低標準 (%)")
     roe_default = st.session_state.get('roe_preset', 15.0)
     roe_min = st.sidebar.slider(
         "ROE 最低值",
-        min_value=float(df['ROE'].min()),
-        max_value=float(df['ROE'].max()),
+        min_value=-100.0,
+        max_value=100.0,
         value=roe_default,
         step=0.5,
         format="%.1f",
@@ -273,13 +273,13 @@ def main():
     )
     st.sidebar.write(f"當前設定: {eps_min:.1f}")
     
-    # 年營收成長率篩選 - 改為滑動條
+    # 年營收成長率篩選 - 改為滑動條，範圍 -100 到 100
     st.sidebar.subheader("📈 年營收成長率最低標準 (%)")
     annual_default = st.session_state.get('annual_preset', 30.0)
     annual_growth_min = st.sidebar.slider(
         "年營收成長率最低值",
-        min_value=float(df['年營收成長率'].min()),
-        max_value=float(df['年營收成長率'].max()),
+        min_value=-100.0,
+        max_value=100.0,
         value=annual_default,
         step=1.0,
         format="%.1f",
@@ -287,13 +287,13 @@ def main():
     )
     st.sidebar.write(f"當前設定: {annual_growth_min:.1f}%")
     
-    # 月營收成長率篩選 - 改為滑動條
+    # 月營收成長率篩選 - 改為滑動條，範圍 -100 到 100
     st.sidebar.subheader("📊 月營收成長率最低標準 (%)")
     monthly_default = st.session_state.get('monthly_preset', 20.0)
     monthly_growth_min = st.sidebar.slider(
         "月營收成長率最低值",
-        min_value=float(df['月營收成長率'].min()),
-        max_value=float(df['月營收成長率'].max()),
+        min_value=-100.0,
+        max_value=100.0,
         value=monthly_default,
         step=1.0,
         format="%.1f",
