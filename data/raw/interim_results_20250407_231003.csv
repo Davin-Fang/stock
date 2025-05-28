@@ -1,0 +1,101 @@
+﻿股票代碼,股票名稱,EPS,ROE,營收成長率,速動比率,現價,市值,產業,部門
+1101.TW,"TCC Group Holdings Co., Ltd.",1.42,5.564,72.89999999999999,1.671,29.8,224429162496,Building Materials,Basic Materials
+1102.TW,Asia Cement Corporation,3.85,6.379,4.6,1.358,42.55,150906126336,Building Materials,Basic Materials
+1103.TW,Chia Hsin Cement Corporation,0.48,1.533,-3.0,3.271,14.4,9508738048,Building Materials,Basic Materials
+1104.TW,Universal Cement Corporation,2.15,6.494,-4.3,1.78,26.7,18334408704,Building Materials,Basic Materials
+1108.TW,Lucky Cement Co.,1.22,8.387,-10.2,0.393,13.3,5383015424,Building Materials,Basic Materials
+1109.TW,"Hsing Ta Cement Co.,Ltd",1.37,5.193,-31.2,5.734,15.8,5390312448,Building Materials,Basic Materials
+1110.TW,"Southeast Cement Co., Ltd.",0.61,4.058,26.700000000000003,0.879,17.6,10030011392,Building Materials,Basic Materials
+1201.TW,Wei Chuan Foods Corporation,0.87,5.906000000000001,4.3999999999999995,0.66,16.3,8248826880,Packaged Foods,Consumer Defensive
+1203.TW,Ve Wong Corporation,2.36,11.0649996,-10.8,1.256,34.9,8295939584,Packaged Foods,Consumer Defensive
+1210.TW,"Great Wall Enterprise Co., Ltd.",4.19,13.314,-5.2,0.508,53.4,44680155136,Packaged Foods,Consumer Defensive
+1213.TW,"Oceanic Beverages Co., Inc.",8.7,104.096,322.7,4.411,12.55,710613632,Beverages - Non-Alcoholic,Consumer Defensive
+1215.TW,"Charoen Pokphand Enterprise (Taiwan) Co., Ltd.",6.54,17.763,1.6,0.36,93.0,27415472128,Packaged Foods,Consumer Defensive
+1216.TW,Uni-President Enterprises Corp.,3.62,15.977,7.199999999999999,0.681,74.5,423310491648,Packaged Foods,Consumer Defensive
+1217.TW,AGV Products Corporation,0.58,3.816,11.700000000000001,0.606,10.8,5340740608,Packaged Foods,Consumer Defensive
+1218.TW,"Taisun Enterprise Co., Ltd.",1.52,5.965,-9.5,3.114,18.7,9094183936,Packaged Foods,Consumer Defensive
+1219.TW,"Fwusow Industry Co., Ltd.",0.53,2.328,-4.1000000000000005,0.866,13.2,4504341504,Packaged Foods,Consumer Defensive
+1220.TW,"Tai Roun Products Co.,Ltd.",1.17,9.0670004,13.900000000000002,2.041,13.2,2328466944,Packaged Foods,Consumer Defensive
+1225.TW,"Formosa Oilseed Processing Co., Ltd.",1.78,11.9849995,-12.7,0.87,29.65,7183246336,Packaged Foods,Consumer Defensive
+1227.TW,Standard Foods Corporation,1.91,9.905,6.7,1.57,32.1,29160280064,Packaged Foods,Consumer Defensive
+1229.TW,Lien Hwa Industrial Holdings Corporation,2.46,6.994,-26.400000000000002,0.994,45.4,77340721152,Conglomerates,Industrials
+1231.TW,Lian Hwa Foods Corporation,4.22,18.573,20.9,1.058,118.0,32015994880,Packaged Foods,Consumer Defensive
+1232.TW,TTET Union Corporation,8.22,24.055,-2.8000000000000003,1.674,153.0,24476176384,Packaged Foods,Consumer Defensive
+1233.TW,"Ten Ren Tea Co., Ltd.",0.97,5.935,2.0,0.682,31.55,2856820992,Packaged Foods,Consumer Defensive
+1234.TW,Hey Song Corporation,2.36,5.055,-12.9,1.0,36.8,14788852736,Beverages - Non-Alcoholic,Consumer Defensive
+1235.TW,"Shin Tai Industry Co., Ltd.",0.08,7.614999999999999,90.3,0.65,99.5,4370139648,Farm Products,Consumer Defensive
+1236.TW,"Hunya Foods Co., Ltd.",-0.28,-0.97,9.5,0.625,20.8,1802819072,Confectioners,Consumer Defensive
+1256.TW,"Sunjuice Holdings Co., Limited",8.56,7.712,-12.9,1.615,120.5,4077985024,Beverages - Non-Alcoholic,Consumer Defensive
+1301.TW,Formosa Plastics Corporation,-0.19,-0.387,5.4,0.649,34.4,218981466112,Specialty Chemicals,Basic Materials
+1303.TW,Nan Ya Plastics Corporation,0.42,0.894,8.200000000000001,0.901,28.3,224442204160,Specialty Chemicals,Basic Materials
+1304.TW,USI Corporation,-2.0,-10.873,-1.6,1.355,10.25,10991075328,Specialty Chemicals,Basic Materials
+1305.TW,China General Plastics Corporation,-1.22,-7.689,-21.0,0.763,11.2,6507759616,Specialty Chemicals,Basic Materials
+1307.TW,"San Fang Chemical Industry Co., Ltd.",3.7,15.381,6.3,1.934,39.95,15892829184,Textile Manufacturing,Consumer Cyclical
+1308.TW,Asia Polymer Corporation,-1.26,-6.047000000000001,-7.3999999999999995,2.246,12.45,7392099840,Specialty Chemicals,Basic Materials
+1309.TW,"Taita Chemical Company, Limited",-0.56,-3.4450000000000003,15.8,1.641,12.0,4771044352,Specialty Chemicals,Basic Materials
+1310.TW,Taiwan Styrene Monomer Corporation,-0.72,-5.219,5.2,0.843,9.05,4777223680,Chemicals,Basic Materials
+1312.TW,Grand Pacific Petrochemical Corporation,-1.42,-4.6550002,1.6,1.282,9.68,11081277440,Chemicals,Basic Materials
+1313.TW,UPC Technology Corporation,-1.79,-8.011,-8.799999999999999,1.161,8.3,11031114752,Chemicals,Basic Materials
+1315.TW,Tahsin Industrial Corporation,2.15,2.085,34.0,10.028,64.0,6113728000,Apparel Manufacturing,Consumer Cyclical
+1316.TW,"Sun Yad Construction Co.,Ltd",-0.77,-2.0450002,175.2,0.283,15.6,5391796736,Real Estate Services,Real Estate
+1319.TW,"Tong Yang Industry Co., Ltd.",7.4,16.479999,5.6000000000000005,1.398,118.5,70090022912,Auto Parts,Consumer Cyclical
+1321.TW,"Ocean Plastics Co., Ltd.",0.76,2.724,-7.000000000000001,1.611,33.45,7381913088,Specialty Chemicals,Basic Materials
+1323.TW,"Yonyu Plastics Co., Ltd.",2.56,9.915000000000001,-35.099999999999994,2.814,20.4,1854033536,Packaging & Containers,Consumer Cyclical
+1324.TW,Globe Industries Corporation,0.09,0.70499997,-6.800000000000001,3.181,11.15,837610240,Business Equipment & Supplies,Industrials
+1325.TW,Universal Incorporation,-0.6,-2.384,-24.3,38.197,24.3,2072328192,Textile Manufacturing,Consumer Cyclical
+1326.TW,Formosa Chemicals & Fibre Corporation,0.06,0.32600001,-7.199999999999999,0.825,24.9,145640587264,Chemicals,Basic Materials
+1337.TW,Asia Plastic Recycling Holding Limited,-1.54,-9.713,-13.8,1.179,5.63,1514216704,Specialty Chemicals,Basic Materials
+1338.TW,Hiroca Holdings Ltd.,-1.51,-0.717,-10.0,1.385,25.2,2074968064,Auto Parts,Consumer Cyclical
+1339.TW,"Y.C.C. Parts Mfg. Co., Ltd.",5.0,8.621999599999999,-8.200000000000001,1.986,50.5,3743261952,Auto Parts,Consumer Cyclical
+1340.TW,Victory New Materials Limited Company,-5.28,-24.018,-36.0,6.906,7.48,1143864064,Footwear & Accessories,Consumer Cyclical
+1341.TW,"Fulin Plastic Industry (Cayman) Holding Co., Ltd.",5.31,20.54,24.3,1.101,61.6,3255621632,Textile Manufacturing,Consumer Cyclical
+1342.TW,"Cathay Consolidated, Inc.",6.18,21.096,3.4000000000000004,1.884,90.9,7134005248,Textile Manufacturing,Consumer Cyclical
+1402.TW,Far Eastern New Century Corporation,1.99,6.028999799999999,5.7,0.768,30.45,162971451392,Textile Manufacturing,Consumer Cyclical
+1409.TW,Shinkong Synthetic Fibers Corporation,1.06,5.021999800000001,18.4,0.432,12.65,20413683712,Textile Manufacturing,Consumer Cyclical
+1410.TW,"Nan Yang Dyeing & Finishing Co.,Ltd",0.57,1.846,21.2,14.639,31.8,2003399936,Textile Manufacturing,Consumer Cyclical
+1413.TW,"Hung Chou Fiber Ind. Co., Ltd",-0.17,-2.103,2.5,0.45,10.85,1433415296,Textile Manufacturing,Consumer Cyclical
+1414.TW,"Tung Ho Textile Co., Ltd.",0.26,1.7999999999999998,-18.099999999999998,1.366,18.2,4004000256,Textile Manufacturing,Consumer Cyclical
+1416.TW,Kwong Fong Industries Corporation,0.79,4.262,13.0,0.781,11.25,2085097472,Information Technology Services,Technology
+1417.TW,Carnival Industrial Corporation,-0.81,-6.2979996,-73.2,5.163,8.19,1555624960,Apparel Retail,Consumer Cyclical
+1418.TW,TongHwa Corporation,0.47,2.004,-15.0,38.347,23.4,1270877440,Textile Manufacturing,Consumer Cyclical
+1419.TW,"Shinkong Textile Co., Ltd.",2.9,6.067,26.0,0.912,38.7,11580472320,Textile Manufacturing,Consumer Cyclical
+1423.TW,Reward Wool Industry Corporation,0.81,2.651,-51.6,30.788,33.25,3313295872,Textile Manufacturing,Consumer Cyclical
+1432.TW,TRK Corporation,-0.47,-6.107,-2.7,0.436,15.65,1690199936,Leisure,Consumer Cyclical
+1434.TW,"Formosa Taffeta Co., Ltd.",0.88,3.266,5.5,1.219,16.35,27508385792,Textile Manufacturing,Consumer Cyclical
+1435.TW,Chung Fu Tex-International Corporation,-0.27,-2.809,38.5,57.278,37.35,5220782592,Conglomerates,Industrials
+1436.TW,"Hua Yu Lien Development Co., Ltd",15.74,45.363998,-37.7,0.188,114.0,14640906240,Real Estate - Development,Real Estate
+1437.TW,GTM Holdings Corporation,3.24,8.294,11.0,2.135,30.5,6202815488,Real Estate Services,Real Estate
+1438.TW,"SanDi Properties Co.,Ltd.",-1.54,-5.8590002000000005,-100.0,0.38,38.85,4320352768,Real Estate - Diversified,Real Estate
+1439.TW,"Ascent Development Co., Ltd.",1.74,5.164,-61.3,0.28,28.9,2658799872,Textile Manufacturing,Consumer Cyclical
+1440.TW,"Tainan Spinning Co., Ltd.",-0.34,-1.7409999999999999,-9.700000000000001,0.758,12.4,20544567296,Textile Manufacturing,Consumer Cyclical
+1441.TW,"Tah Tong Textile Co., Ltd.",1.63,22.035,57.599999999999994,0.283,12.15,871689600,Textile Manufacturing,Consumer Cyclical
+1442.TW,"Advancetek Enterprise Co.,Ltd.",7.17,33.396,-67.60000000000001,0.199,83.0,30395596800,Real Estate Services,Real Estate
+1443.TW,"Lily Textile Co., Ltd.",1.81,13.059000000000001,28.499999999999996,0.09,27.3,3694864128,Integrated Freight & Logistics,Industrials
+1444.TW,"Lealea Enterprise Co., Ltd.",0.28,2.0399998999999998,35.199999999999996,0.249,7.29,7176203264,Textile Manufacturing,Consumer Cyclical
+1445.TW,"Universal Textile Co., Ltd.",-1.52,-7.797,-36.5,2.108,13.9,1816257408,Textile Manufacturing,Consumer Cyclical
+1446.TW,"Hong Ho Precision Textile Co.,Ltd.",9.82,62.976,30.7,1.491,28.15,3876536320,Textile Manufacturing,Consumer Cyclical
+1447.TW,"Li Peng Enterprise Co., Ltd.",0.04,0.738,30.4,0.712,6.3,5314314752,Textile Manufacturing,Consumer Cyclical
+1449.TW,"Chia Her Industrial Co., Ltd.",0.93,5.0040002999999995,7.3,0.254,14.85,1530945920,Textile Manufacturing,Consumer Cyclical
+1451.TW,"Nien Hsing Textile Co., Ltd.",1.2,3.45,-0.1,3.68,19.35,3831300096,Textile Manufacturing,Consumer Cyclical
+1452.TW,"Hong Yi Fiber Ind. Co., Ltd.",0.64,3.071,25.6,12.62,13.45,1784021376,Textile Manufacturing,Consumer Cyclical
+1453.TW,"Ta Jiang Co., Ltd.",0.02,0.13400001,-99.8,0.442,15.05,1654672256,Textile Manufacturing,Consumer Cyclical
+1454.TW,"Taiwan Taffeta Fabric Co., Ltd.",0.1,0.77,13.5,1.753,14.55,1776846080,Textile Manufacturing,Consumer Cyclical
+1455.TW,"Zig Sheng Industrial Co., Ltd.",0.01,0.083,-7.3999999999999995,0.97,8.44,4487446528,Textile Manufacturing,Consumer Cyclical
+1456.TW,"I-Hwa Industrial Co.,Ltd",1.1,6.578,-15.6,0.028,13.35,1251161984,Real Estate Services,Real Estate
+1457.TW,"Yi Jinn Industrial Co., Ltd.",0.91,3.4549999999999996,-0.0,0.901,17.9,4179990272,Textile Manufacturing,Consumer Cyclical
+1459.TW,"Lan Fa Textile Co., Ltd.",0.68,7.217,-20.3,1.356,11.65,3698700032,Textile Manufacturing,Consumer Cyclical
+1460.TW,"Everest Textile Co., Ltd.",-0.41,-14.921999999999999,4.9,0.273,6.75,4552638976,Textile Manufacturing,Consumer Cyclical
+1463.TW,"Chyang Sheng Texing Co., Ltd.",3.27,21.166999999999998,378.6,2.721,23.95,3937212160,Textile Manufacturing,Consumer Cyclical
+1464.TW,"De Licacy Industrial Co., Ltd.",1.03,8.947,31.900000000000002,0.633,16.05,6542621696,Textile Manufacturing,Consumer Cyclical
+1465.TW,"Wisher Industrial Co., Ltd.",0.65,4.0680000000000005,-16.7,2.923,13.5,1398694528,Textile Manufacturing,Consumer Cyclical
+1466.TW,Acelon Chemicals & Fiber Corporation,0.14,1.1849999,22.400000000000002,0.864,15.4,1711817728,Textile Manufacturing,Consumer Cyclical
+1467.TW,"Tex-Ray Industrial Co., Ltd.",0.46,2.8499998,4.0,0.917,8.63,2016183680,Apparel Manufacturing,Consumer Cyclical
+1468.TW,Chang-Ho Fibre Corporation,0.94,12.415,-8.200000000000001,0.512,12.25,1964961152,Textile Manufacturing,Consumer Cyclical
+1470.TW,evertex fabrinology limited,1.13,9.633,67.4,2.863,20.55,1762511744,Textile Manufacturing,Consumer Cyclical
+1471.TW,Solytech Enterprise Corporation,0.04,0.426,8.3,10.027,9.86,1483091968,Computer Hardware,Technology
+1472.TW,"Triocean Industrial Corporation Co., Ltd.",3.3,8.9549996,11.0,1.528,88.7,4655694336,Textile Manufacturing,Consumer Cyclical
+1473.TW,"Tainan Enterprises Co., Ltd.",3.02,11.254,6.0,1.595,32.7,4779235840,Apparel Manufacturing,Consumer Cyclical
+1474.TW,"Honmyue Enterprise Co., Ltd.",0.76,2.76,18.2,1.149,12.7,1649691904,Textile Manufacturing,Consumer Cyclical
+1475.TW,"Big Sun Shine CO., LTD.",7.21,33.240002000000004,45.1,3.207,49.45,3264540672,Textile Manufacturing,Consumer Cyclical
+1476.TW,"Eclat Textile Co., Ltd.",24.19,24.329,12.6,2.305,395.5,108512149504,Apparel Manufacturing,Consumer Cyclical
+1477.TW,"Makalot Industrial Co., Ltd.",16.62,27.181998,7.7,0.911,285.0,70307790848,Apparel Manufacturing,Consumer Cyclical
