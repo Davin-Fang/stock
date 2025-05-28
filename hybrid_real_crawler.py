@@ -17,6 +17,7 @@ import time
 import os
 from datetime import datetime, timedelta
 import numpy as np
+import glob
 
 class HybridRealCrawler:
     def __init__(self):
@@ -32,8 +33,54 @@ class HybridRealCrawler:
         # 檢查並嘗試安裝 twstock
         self.twstock_available = self.check_twstock()
         
-        # 台灣主要股票清單
-        self.taiwan_stocks = [
+        # 載入完整的台灣股票列表
+        self.taiwan_stocks = self.load_taiwan_stocks()
+    
+    def load_taiwan_stocks(self):
+        """從文件載入完整的台灣股票列表"""
+        # 尋找最新的股票代碼文件
+        patterns = [
+            'data/processed/taiwan_all_stock_codes_*.csv',
+            'data/processed/taiwan_all_stocks_complete_*.csv',
+            'data/taiwan_all_stock_codes_*.csv',
+            'taiwan_all_stock_codes_*.csv'
+        ]
+        
+        stock_file = None
+        for pattern in patterns:
+            files = glob.glob(pattern)
+            if files:
+                stock_file = max(files, key=os.path.getctime)
+                break
+        
+        if stock_file:
+            try:
+                df = pd.read_csv(stock_file)
+                self.log_message(f"✅ 載入股票列表: {stock_file}")
+                self.log_message(f"📊 總股票數量: {len(df)}")
+                
+                # 提取股票代碼和名稱
+                stocks = []
+                for _, row in df.iterrows():
+                    if 'stock_code' in row and 'name' in row:
+                        # 移除 .TW 後綴，只保留數字代碼
+                        code = str(row['stock_code']).replace('.TW', '')
+                        name = str(row['name'])
+                        stocks.append((code, name))
+                    elif 'code' in row and 'name' in row:
+                        code = str(row['code'])
+                        name = str(row['name'])
+                        stocks.append((code, name))
+                
+                self.log_message(f"🎯 成功解析 {len(stocks)} 支股票")
+                return stocks
+                
+            except Exception as e:
+                self.log_message(f"❌ 載入股票列表失敗: {str(e)}")
+        
+        # 如果無法載入文件，使用備用的主要股票清單
+        self.log_message("⚠️ 無法載入完整股票列表，使用備用清單")
+        return [
             ('2330', '台積電'), ('2317', '鴻海'), ('2454', '聯發科'),
             ('2891', '中信金'), ('2882', '國泰金'), ('2881', '富邦金'),
             ('2412', '中華電'), ('2002', '中鋼'), ('1301', '台塑'),
@@ -372,28 +419,63 @@ class HybridRealCrawler:
         
         all_results = []
         real_data_count = 0
+        failed_stocks = []  # 記錄失敗的股票
+        success_by_source = {'TWSTOCK': 0, 'TWSE_API': 0, 'ESTIMATED': 0}
         
         try:
             for i, (code, name) in enumerate(self.taiwan_stocks, 1):
                 self.log_message(f"\n📈 處理 {i}/{len(self.taiwan_stocks)}: {code} ({name})")
                 
-                data = self.get_comprehensive_stock_data(code, name)
-                
-                if data:
-                    all_results.append(data)
+                try:
+                    data = self.get_comprehensive_stock_data(code, name)
                     
-                    # 統計真實數據
-                    real_sources = [s for s in data.get('data_sources', []) if s != 'ESTIMATED']
-                    if real_sources:
-                        real_data_count += 1
+                    if data:
+                        all_results.append(data)
+                        
+                        # 統計數據來源
+                        sources = data.get('data_sources', [])
+                        real_sources = [s for s in sources if s != 'ESTIMATED']
+                        
+                        if real_sources:
+                            real_data_count += 1
+                            for source in real_sources:
+                                if source in success_by_source:
+                                    success_by_source[source] += 1
+                        
+                        # 記錄成功獲取的數據類型
+                        has_price = data.get('current_price', 0) > 0
+                        has_financial = data.get('ROE', 0) > 0 or data.get('EPS', 0) > 0
+                        
+                        status = "✅ 成功"
+                        if has_price and has_financial:
+                            status += " (完整數據)"
+                        elif has_price:
+                            status += " (有價格)"
+                        elif has_financial:
+                            status += " (有財務指標)"
+                        else:
+                            status += " (僅基本數據)"
+                        
+                        self.log_message(f"   {status} - 來源: {', '.join(sources)}")
+                    else:
+                        failed_stocks.append((code, name, "無法獲取任何數據"))
+                        self.log_message(f"   ❌ 失敗 - 無法獲取任何數據")
+                
+                except Exception as e:
+                    failed_stocks.append((code, name, str(e)))
+                    self.log_message(f"   ❌ 錯誤 - {str(e)}")
                 
                 # 適度延遲避免請求過快
                 time.sleep(1.5)
                 
-                # 每10支股票休息
-                if i % 10 == 0 and i < len(self.taiwan_stocks):
-                    self.log_message("⏳ 休息 5 秒...")
-                    time.sleep(5)
+                # 每50支股票休息並顯示進度
+                if i % 50 == 0 and i < len(self.taiwan_stocks):
+                    self.log_message(f"⏳ 已處理 {i}/{len(self.taiwan_stocks)} ({i/len(self.taiwan_stocks)*100:.1f}%)，休息 10 秒...")
+                    self.log_message(f"   成功: {len(all_results)}，失敗: {len(failed_stocks)}")
+                    time.sleep(10)
+                elif i % 10 == 0:
+                    self.log_message(f"⏳ 已處理 {i}/{len(self.taiwan_stocks)} ({i/len(self.taiwan_stocks)*100:.1f}%)，休息 3 秒...")
+                    time.sleep(3)
             
             # 保存結果
             if all_results:
@@ -418,63 +500,98 @@ class HybridRealCrawler:
                 filename = os.path.join(self.processed_dir, f'hybrid_real_stock_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
                 df.to_csv(filename, index=False, encoding='utf-8-sig')
                 
-                self.generate_report(df, real_data_count)
+                # 保存失敗清單
+                if failed_stocks:
+                    failed_filename = os.path.join(self.logs_dir, f'failed_stocks_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+                    failed_df = pd.DataFrame(failed_stocks, columns=['stock_code', 'name', 'error'])
+                    failed_df.to_csv(failed_filename, index=False, encoding='utf-8-sig')
+                    self.log_message(f"💾 失敗清單已保存: {failed_filename}")
+                
+                self.generate_report(df, real_data_count, failed_stocks, success_by_source)
                 self.log_message(f"🎉 混合式真實數據爬取完成！文件保存至: {os.path.basename(filename)}")
                 
                 return filename
             else:
                 self.log_message("❌ 沒有獲取到任何數據")
+                self.log_message(f"❌ 所有 {len(failed_stocks)} 支股票都失敗了")
                 return None
                 
         except KeyboardInterrupt:
             self.log_message("\n⏹️ 程式被用戶中斷")
             if all_results:
                 df = pd.DataFrame(all_results)
-                interrupted_file = f"interrupted_hybrid_real_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                interrupted_file = os.path.join(self.processed_dir, f"interrupted_hybrid_real_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
                 df.to_csv(interrupted_file, index=False, encoding='utf-8-sig')
-                self.log_message(f"💾 已保存中斷前的數據: {interrupted_file}")
+                self.log_message(f"💾 已保存中斷前的數據 ({len(all_results)} 支股票): {interrupted_file}")
             return None
         except Exception as e:
             self.log_message(f"❌ 爬取過程發生錯誤: {str(e)}")
             return None
     
-    def generate_report(self, df, real_data_count):
+    def generate_report(self, df, real_data_count, failed_stocks, success_by_source):
         """生成數據報告"""
+        total_stocks = len(df) + len(failed_stocks)
+        success_rate = len(df) / total_stocks * 100 if total_stocks > 0 else 0
+        
         self.log_message("\n📊 混合式真實數據爬取報告:")
-        self.log_message(f"總股票數: {len(df)}")
-        self.log_message(f"包含真實數據的股票: {real_data_count} 支 ({real_data_count/len(df)*100:.1f}%)")
+        self.log_message("=" * 60)
+        self.log_message(f"🎯 目標股票總數: {total_stocks}")
+        self.log_message(f"✅ 成功獲取數據: {len(df)} 支 ({success_rate:.1f}%)")
+        self.log_message(f"❌ 失敗股票數: {len(failed_stocks)} 支 ({len(failed_stocks)/total_stocks*100:.1f}%)")
+        self.log_message(f"🔥 包含真實數據: {real_data_count} 支 ({real_data_count/len(df)*100:.1f}%)")
         
         # 數據來源統計
-        if 'data_sources' in df.columns:
-            source_counts = {'TWSTOCK': 0, 'TWSE_API': 0, 'ESTIMATED': 0}
-            
-            for sources_list in df['data_sources'].dropna():
-                if isinstance(sources_list, list):
-                    for source in sources_list:
-                        if source in source_counts:
-                            source_counts[source] += 1
-            
-            self.log_message("數據來源統計:")
-            self.log_message(f"  twstock 數據: {source_counts['TWSTOCK']} 支")
-            self.log_message(f"  TWSE API 數據: {source_counts['TWSE_API']} 支")
-            self.log_message(f"  智能估算數據: {source_counts['ESTIMATED']} 支")
+        self.log_message("\n📡 數據來源成功統計:")
+        self.log_message(f"  📈 twstock 成功: {success_by_source['TWSTOCK']} 支")
+        self.log_message(f"  🌐 TWSE API 成功: {success_by_source['TWSE_API']} 支")
+        self.log_message(f"  🧠 智能估算: {success_by_source['ESTIMATED']} 支")
         
-        # 有價格數據的股票
+        if 'data_sources' in df.columns:
+            multi_source = df[df['data_sources'].apply(lambda x: len(x) > 1 if isinstance(x, list) else False)]
+            self.log_message(f"  🔗 多重來源: {len(multi_source)} 支 (數據更可靠)")
+        
+        # 股價數據統計
         if 'current_price' in df.columns:
             with_price = df[df['current_price'] > 0]
-            self.log_message(f"包含當前股價的股票: {len(with_price)} 支 ({len(with_price)/len(df)*100:.1f}%)")
+            self.log_message(f"\n💰 股價數據:")
+            self.log_message(f"  有當前股價: {len(with_price)} 支 ({len(with_price)/len(df)*100:.1f}%)")
+            
+            if len(with_price) > 0:
+                avg_price = with_price['current_price'].mean()
+                self.log_message(f"  平均股價: {avg_price:.2f} 元")
+                self.log_message(f"  價格範圍: {with_price['current_price'].min():.2f} ~ {with_price['current_price'].max():.2f} 元")
         
         # 財務指標統計
+        self.log_message(f"\n📈 財務指標有效性:")
         for col in ['ROE', 'EPS', '年營收成長率', '月營收成長率']:
             if col in df.columns:
-                valid_data = df[df[col] > 0]
-                self.log_message(f"{col} 有效數據: {len(valid_data)} 支")
+                valid_data = df[df[col] != 0]  # 非零數據
+                self.log_message(f"  {col}: {len(valid_data)} 支 ({len(valid_data)/len(df)*100:.1f}%)")
                 
                 if len(valid_data) > 0:
-                    self.log_message(f"  平均值: {valid_data[col].mean():.2f}")
-                    self.log_message(f"  範圍: {valid_data[col].min():.2f} ~ {valid_data[col].max():.2f}")
+                    self.log_message(f"    平均: {valid_data[col].mean():.2f}{'%' if '率' in col else ''}")
+                    self.log_message(f"    範圍: {valid_data[col].min():.2f} ~ {valid_data[col].max():.2f}{'%' if '率' in col else ''}")
         
-        # 優質股票
+        # 失敗分析
+        if failed_stocks:
+            self.log_message(f"\n❌ 失敗股票分析:")
+            error_types = {}
+            for code, name, error in failed_stocks:
+                error_type = error.split(':')[0] if ':' in error else error
+                error_types[error_type] = error_types.get(error_type, 0) + 1
+            
+            for error_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+                self.log_message(f"  {error_type}: {count} 支")
+            
+            # 顯示前10個失敗的股票
+            self.log_message(f"\n前10個失敗股票:")
+            for i, (code, name, error) in enumerate(failed_stocks[:10]):
+                self.log_message(f"  {i+1}. {code} ({name}): {error}")
+            
+            if len(failed_stocks) > 10:
+                self.log_message(f"  ... 還有 {len(failed_stocks) - 10} 支股票失敗")
+        
+        # 優質股票分析
         if all(col in df.columns for col in ['ROE', 'EPS', '年營收成長率']):
             quality_stocks = df[
                 (df['ROE'] > 15) & 
@@ -482,26 +599,46 @@ class HybridRealCrawler:
                 (df['年營收成長率'] > 10)
             ]
             
-            self.log_message(f"\n🏆 優質股票 (ROE>15%, EPS>2, 年成長>10%): {len(quality_stocks)} 支")
+            self.log_message(f"\n🏆 優質股票 (ROE>15%, EPS>2, 年成長>10%):")
+            self.log_message(f"  發現 {len(quality_stocks)} 支優質股票 ({len(quality_stocks)/len(df)*100:.1f}%)")
             
             if len(quality_stocks) > 0:
-                top3 = quality_stocks.nlargest(3, 'ROE')
-                self.log_message("前3名優質股票:")
-                for _, row in top3.iterrows():
-                    sources = ', '.join(row.get('data_sources', []))
+                top5 = quality_stocks.nlargest(5, 'ROE')
+                self.log_message(f"  前5名優質股票:")
+                for i, (_, row) in enumerate(top5.iterrows(), 1):
+                    sources = ', '.join(row.get('data_sources', ['未知']))
                     price_info = f", 股價: {row.get('current_price', 'N/A')}" if 'current_price' in row else ""
-                    self.log_message(f"  {row['stock_code']} {row['name']}: ROE={row['ROE']:.2f}%, EPS={row['EPS']:.2f}{price_info} (來源: {sources})")
+                    self.log_message(f"    {i}. {row['stock_code']} {row['name']}: ROE={row['ROE']:.2f}%, EPS={row['EPS']:.2f}{price_info} (來源: {sources})")
+        
+        # 數據品質評估
+        self.log_message(f"\n📊 數據品質評估:")
+        if success_rate >= 80:
+            self.log_message(f"  🟢 優秀 - 成功率 {success_rate:.1f}%")
+        elif success_rate >= 60:
+            self.log_message(f"  🟡 良好 - 成功率 {success_rate:.1f}%")
+        else:
+            self.log_message(f"  🔴 需改進 - 成功率 {success_rate:.1f}%")
+        
+        real_data_rate = real_data_count / len(df) * 100 if len(df) > 0 else 0
+        if real_data_rate >= 50:
+            self.log_message(f"  🟢 真實數據比例優秀 - {real_data_rate:.1f}%")
+        elif real_data_rate >= 30:
+            self.log_message(f"  🟡 真實數據比例良好 - {real_data_rate:.1f}%")
+        else:
+            self.log_message(f"  🟡 真實數據比例一般 - {real_data_rate:.1f}% (主要依賴智能估算)")
+        
+        self.log_message("=" * 60)
 
 def main():
     """主函數"""
-    print("🔄 混合式台灣股票真實數據爬蟲")
+    print("混合式台灣股票真實數據爬蟲")
     print("=" * 60)
     print("特色：")
-    print("✅ 結合 twstock 套件獲取歷史交易數據")
-    print("✅ 使用台股即時資訊 API 獲取當前股價")
-    print("✅ 智能估算財務指標 (ROE、EPS、成長率)")
-    print("✅ 基於真實市場數據進行估算")
-    print("✅ 完全與股票分析工具兼容")
+    print("✓ 結合 twstock 套件獲取歷史交易數據")
+    print("✓ 使用台股即時資訊 API 獲取當前股價")
+    print("✓ 智能估算財務指標 (ROE、EPS、成長率)")
+    print("✓ 基於真實市場數據進行估算")
+    print("✓ 完全與股票分析工具兼容")
     print("=" * 60)
     
     crawler = HybridRealCrawler()
@@ -518,12 +655,11 @@ def main():
             else:
                 print("\n❌ 爬取失敗")
         else:
-            print("操作已取消")
-            
+            print("👋 取消爬取")
     except KeyboardInterrupt:
-        print("\n程式被中斷")
+        print("\n👋 程式已取消")
     except Exception as e:
-        print(f"執行錯誤: {str(e)}")
+        print(f"\n❌ 執行錯誤: {str(e)}")
 
 if __name__ == "__main__":
     main() 

@@ -27,26 +27,35 @@ def run_command(cmd, description):
 
 def crawl_latest_data():
     """抓取最新股票數據"""
-    print("📊 開始抓取最新台灣股票數據...")
+    print("�� 開始抓取最新台灣股票數據...")
+    print("🚨 只使用真實數據來源，絕不製造假數據！")
     
     # 檢查混合式爬蟲是否存在
     if Path('hybrid_real_crawler.py').exists():
-        print("🚀 使用混合式真實數據爬蟲...")
+        print("🚀 使用混合式真實數據爬蟲 (推薦)...")
+        print("📡 數據來源: twstock + TWSE API + 官方網站")
         result = run_command("python hybrid_real_crawler.py", "抓取真實股票數據")
         return result is not None
     
     elif Path('twse_real_crawler.py').exists():
         print("🚀 使用 TWSE 真實數據爬蟲...")
+        print("📡 數據來源: 台灣證券交易所官方 API")
         result = run_command("python twse_real_crawler.py", "抓取 TWSE 股票數據")
         return result is not None
     
-    elif Path('create_sample_data.py').exists():
-        print("🚀 使用示例數據生成器...")
-        result = run_command("python create_sample_data.py", "生成示例股票數據")
+    elif Path('multi_source_crawler.py').exists():
+        print("🚀 使用多來源真實數據爬蟲...")
+        print("📡 數據來源: 多個官方股票資訊網站")
+        result = run_command("python multi_source_crawler.py", "抓取多來源股票數據")
         return result is not None
     
     else:
-        print("❌ 找不到可用的數據爬蟲腳本")
+        print("❌ 找不到任何真實數據爬蟲腳本")
+        print("💡 請確保以下文件存在:")
+        print("   - hybrid_real_crawler.py (推薦)")
+        print("   - twse_real_crawler.py")
+        print("   - multi_source_crawler.py")
+        print("🚨 本系統絕不使用假數據！")
         return False
 
 def check_new_data():
