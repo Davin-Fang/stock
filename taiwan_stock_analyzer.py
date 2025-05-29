@@ -115,12 +115,14 @@ st.markdown("""
 @st.cache_data
 def load_stock_data():
     """載入最新的股票數據"""
-    # 擴展搜索模式，包含各種數據文件
+    # 優先搜索修正後的數據文件
     search_patterns = [
+        'data/processed/fixed_real_stock_data_*.csv',  # 修正版數據（最優先）
         'data/processed/hybrid_real_stock_data_*.csv',
         'data/processed/taiwan_all_stocks_complete_*.csv',
         'data/processed/stock_data_*.csv',
         'data/processed/taiwan_*.csv',
+        'fixed_real_stock_data_*.csv',  # 當前目錄的修正版數據
         'hybrid_real_stock_data_*.csv',
         'stock_data_*.csv',
         'taiwan_*.csv'
@@ -134,25 +136,32 @@ def load_stock_data():
     if not all_files:
         return None, "找不到任何股票資料檔案"
     
-    # 優先選擇文件大小最大的文件（通常包含最多股票數據）
-    file_sizes = []
-    for file in all_files:
-        try:
-            size = os.path.getsize(file)
-            file_sizes.append((file, size))
-        except:
-            continue
+    # 優先選擇修正版數據文件，然後按文件大小排序
+    fixed_files = [f for f in all_files if 'fixed_real_stock_data' in f]
     
-    if not file_sizes:
-        return None, "無法讀取數據文件大小"
-    
-    # 按文件大小排序，選擇最大的文件
-    file_sizes.sort(key=lambda x: x[1], reverse=True)
-    latest_file = file_sizes[0][0]
-    
-    # 如果最大文件太小（小於10KB），則按時間選擇最新文件
-    if file_sizes[0][1] < 10000:
-        latest_file = max(all_files, key=os.path.getctime)
+    if fixed_files:
+        # 如果有修正版數據，選擇最新的
+        latest_file = max(fixed_files, key=os.path.getctime)
+    else:
+        # 否則按文件大小選擇最大的文件
+        file_sizes = []
+        for file in all_files:
+            try:
+                size = os.path.getsize(file)
+                file_sizes.append((file, size))
+            except:
+                continue
+        
+        if not file_sizes:
+            return None, "無法讀取數據文件大小"
+        
+        # 按文件大小排序，選擇最大的文件
+        file_sizes.sort(key=lambda x: x[1], reverse=True)
+        latest_file = file_sizes[0][0]
+        
+        # 如果最大文件太小（小於10KB），則按時間選擇最新文件
+        if file_sizes[0][1] < 10000:
+            latest_file = max(all_files, key=os.path.getctime)
     
     try:
         df = pd.read_csv(latest_file)
@@ -180,14 +189,7 @@ def load_stock_data():
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
-            # 如果缺少某些欄位，嘗試用合理的預設值填充
-            for col in missing_columns:
-                if col == '年營收成長率':
-                    df[col] = 10.0  # 預設10%年成長率
-                elif col == '月營收成長率':
-                    df[col] = 5.0   # 預設5%月成長率
-                else:
-                    return None, f"缺少關鍵欄位: {missing_columns}"
+            return None, f"缺少關鍵欄位: {missing_columns}"
         
         # 清理數據
         for col in ['ROE', 'EPS', '年營收成長率', '月營收成長率']:
@@ -197,9 +199,16 @@ def load_stock_data():
         # 移除包含NaN的行
         df = df.dropna(subset=['ROE', 'EPS'])
         
-        # 添加文件大小信息到返回結果
+        # 添加文件信息到返回結果
         file_size_mb = os.path.getsize(latest_file) / (1024 * 1024)
-        file_info_with_size = f"{latest_file} ({file_size_mb:.1f}MB, {len(df)} stocks)"
+        
+        # 檢查是否是修正版數據
+        if 'fixed_real_stock_data' in latest_file:
+            data_quality = "✅ 修正版真實數據"
+        else:
+            data_quality = "⚠️ 原始數據"
+        
+        file_info_with_size = f"{latest_file} ({file_size_mb:.1f}MB, {len(df)} stocks) - {data_quality}"
         
         return df, file_info_with_size
     
