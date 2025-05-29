@@ -299,8 +299,23 @@ def main():
         st.info("請確保有股票數據文件在 data/processed/ 目錄下")
         return
     
-    st.success(f"✅ 成功載入數據: {os.path.basename(file_info)}")
-    st.info(f"📅 最後更新時間: {datetime.fromtimestamp(os.path.getctime(file_info)).strftime('%Y-%m-%d %H:%M:%S')}")
+    # 從 file_info 中提取實際的文件路徑
+    if " (" in file_info:
+        actual_file_path = file_info.split(" (")[0]
+    else:
+        actual_file_path = file_info
+    
+    st.success(f"✅ 成功載入數據: {file_info}")
+    
+    # 安全地獲取文件更新時間
+    try:
+        if os.path.exists(actual_file_path):
+            update_time = datetime.fromtimestamp(os.path.getctime(actual_file_path)).strftime('%Y-%m-%d %H:%M:%S')
+            st.info(f"📅 最後更新時間: {update_time}")
+        else:
+            st.info("📅 文件時間信息不可用")
+    except Exception:
+        st.info("📅 文件時間信息不可用")
     
     # 側邊欄篩選條件
     st.sidebar.markdown('<div class="filter-header">篩選條件設定</div>', unsafe_allow_html=True)
