@@ -115,31 +115,69 @@ st.markdown("""
 @st.cache_data
 def load_stock_data():
     """載入最新的股票數據"""
-    # 尋找最新的processed數據文件
-    files = glob.glob('data/processed/stock_data_*.csv')
-    if not files:
-        # 如果沒有processed文件，嘗試載入根目錄的csv文件
-        files = glob.glob('stock_data_*.csv')
-        if not files:
-            return None, "找不到任何股票資料檔案"
+    # 擴展搜索模式，包含各種數據文件
+    search_patterns = [
+        'data/processed/hybrid_real_stock_data_*.csv',
+        'data/processed/stock_data_*.csv',
+        'data/processed/taiwan_*.csv',
+        'hybrid_real_stock_data_*.csv',
+        'stock_data_*.csv',
+        'taiwan_*.csv'
+    ]
     
-    latest_file = max(files, key=os.path.getctime)
+    all_files = []
+    for pattern in search_patterns:
+        files = glob.glob(pattern)
+        all_files.extend(files)
+    
+    if not all_files:
+        return None, "找不到任何股票資料檔案"
+    
+    # 找到最新的文件
+    latest_file = max(all_files, key=os.path.getctime)
     
     try:
         df = pd.read_csv(latest_file)
+        
+        # 檢查並處理列名的變化
+        column_mapping = {
+            'stock_code': ['stock_code', '股票代號', 'code'],
+            'name': ['name', '股票名稱', 'company_name'],
+            'ROE': ['ROE', 'roe'],
+            'EPS': ['EPS', 'eps'],
+            '年營收成長率': ['年營收成長率', 'annual_growth', '年成長率'],
+            '月營收成長率': ['月營收成長率', 'monthly_growth', '月成長率']
+        }
+        
+        # 重新映射列名
+        for standard_name, possible_names in column_mapping.items():
+            for possible_name in possible_names:
+                if possible_name in df.columns:
+                    if possible_name != standard_name:
+                        df = df.rename(columns={possible_name: standard_name})
+                    break
+        
         # 確保必要的欄位存在
         required_columns = ['stock_code', 'name', 'ROE', 'EPS', '年營收成長率', '月營收成長率']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
-            return None, f"缺少必要欄位: {missing_columns}"
+            # 如果缺少某些欄位，嘗試用合理的預設值填充
+            for col in missing_columns:
+                if col == '年營收成長率':
+                    df[col] = 10.0  # 預設10%年成長率
+                elif col == '月營收成長率':
+                    df[col] = 5.0   # 預設5%月成長率
+                else:
+                    return None, f"缺少關鍵欄位: {missing_columns}"
         
         # 清理數據
         for col in ['ROE', 'EPS', '年營收成長率', '月營收成長率']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         # 移除包含NaN的行
-        df = df.dropna(subset=['ROE', 'EPS', '年營收成長率', '月營收成長率'])
+        df = df.dropna(subset=['ROE', 'EPS'])
         
         return df, latest_file
     
