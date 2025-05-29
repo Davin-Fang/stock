@@ -252,40 +252,24 @@ def create_charts(df_filtered):
         st.warning("沒有符合條件的股票，無法顯示圖表")
         return
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # ROE vs EPS 散點圖
-        fig_scatter = px.scatter(
-            df_filtered, 
-            x='ROE', 
-            y='EPS',
-            hover_data=['stock_code', 'name'],
-            title="ROE vs EPS 分布圖",
-            labels={'ROE': 'ROE (%)', 'EPS': 'EPS'},
-            color='年營收成長率',
-            color_continuous_scale='viridis'
-        )
-        fig_scatter.update_layout(
-            title_font_size=16,
-            title_x=0.5
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    with col2:
-        # 營收成長率分布
-        fig_hist = px.histogram(
-            df_filtered,
-            x='年營收成長率',
-            nbins=20,
-            title="年營收成長率分布",
-            labels={'年營收成長率': '年營收成長率 (%)', 'count': '股票數量'}
-        )
-        fig_hist.update_layout(
-            title_font_size=16,
-            title_x=0.5
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
+    # 只顯示 ROE vs EPS 散點圖
+    fig_scatter = px.scatter(
+        df_filtered, 
+        x='ROE', 
+        y='EPS',
+        hover_data=['stock_code', 'name'],
+        title="ROE vs EPS 分布圖",
+        labels={'ROE': 'ROE (%)', 'EPS': 'EPS'},
+        color='年營收成長率',
+        color_continuous_scale='viridis'
+    )
+    fig_scatter.update_layout(
+        title_font_size=16,
+        title_x=0.5,
+        width=800,
+        height=500
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
 
 def main():
     # 主標題
