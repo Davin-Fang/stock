@@ -118,6 +118,7 @@ def load_stock_data():
     # 擴展搜索模式，包含各種數據文件
     search_patterns = [
         'data/processed/hybrid_real_stock_data_*.csv',
+        'data/processed/taiwan_all_stocks_complete_*.csv',
         'data/processed/stock_data_*.csv',
         'data/processed/taiwan_*.csv',
         'hybrid_real_stock_data_*.csv',
@@ -133,8 +134,25 @@ def load_stock_data():
     if not all_files:
         return None, "找不到任何股票資料檔案"
     
-    # 找到最新的文件
-    latest_file = max(all_files, key=os.path.getctime)
+    # 優先選擇文件大小最大的文件（通常包含最多股票數據）
+    file_sizes = []
+    for file in all_files:
+        try:
+            size = os.path.getsize(file)
+            file_sizes.append((file, size))
+        except:
+            continue
+    
+    if not file_sizes:
+        return None, "無法讀取數據文件大小"
+    
+    # 按文件大小排序，選擇最大的文件
+    file_sizes.sort(key=lambda x: x[1], reverse=True)
+    latest_file = file_sizes[0][0]
+    
+    # 如果最大文件太小（小於10KB），則按時間選擇最新文件
+    if file_sizes[0][1] < 10000:
+        latest_file = max(all_files, key=os.path.getctime)
     
     try:
         df = pd.read_csv(latest_file)
@@ -179,7 +197,11 @@ def load_stock_data():
         # 移除包含NaN的行
         df = df.dropna(subset=['ROE', 'EPS'])
         
-        return df, latest_file
+        # 添加文件大小信息到返回結果
+        file_size_mb = os.path.getsize(latest_file) / (1024 * 1024)
+        file_info_with_size = f"{latest_file} ({file_size_mb:.1f}MB, {len(df)} stocks)"
+        
+        return df, file_info_with_size
     
     except Exception as e:
         return None, f"載入數據時發生錯誤: {str(e)}"
