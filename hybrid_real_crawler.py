@@ -18,6 +18,7 @@ import os
 from datetime import datetime, timedelta
 import numpy as np
 import glob
+import sys
 
 class HybridRealCrawler:
     def __init__(self):
@@ -644,7 +645,15 @@ def main():
     crawler = HybridRealCrawler()
     
     try:
-        confirm = input("\n是否開始混合式真實股票數據爬取？(y/N): ").strip().lower()
+        # 檢查是否有自動模式參數
+        auto_mode = "--auto" in sys.argv or "-a" in sys.argv
+        
+        if auto_mode:
+            print("\n🚀 自動模式：開始混合式真實股票數據爬取...")
+            confirm = "y"
+        else:
+            confirm = input("\n是否開始混合式真實股票數據爬取？(y/N): ").strip().lower()
+        
         if confirm in ['y', 'yes']:
             result_file = crawler.crawl_all_stocks()
             if result_file:
