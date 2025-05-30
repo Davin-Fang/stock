@@ -112,29 +112,261 @@ def load_stock_data():
         st.sidebar.error("❌ 找不到股票數據文件")
         return None
 
-# 獲取股票歷史價格
+# 獲取股票歷史價格 - 多重來源備用
 @st.cache_data
 def get_stock_price_data(stock_code, period="1y"):
-    """獲取股票歷史價格數據"""
-    try:
-        # 確保股票代碼格式正確
-        if not stock_code.endswith('.TW'):
-            stock_code = f"{stock_code}.TW"
-        
-        # 獲取股票數據
-        ticker = yf.Ticker(stock_code)
-        hist = ticker.history(period=period)
-        
-        if hist.empty:
-            return None
-        
-        # 重置索引，將日期作為列
-        hist.reset_index(inplace=True)
-        return hist
+    """獲取股票歷史價格數據 - 使用多重來源"""
     
-    except Exception as e:
-        st.error(f"獲取股價數據失敗: {str(e)}")
-        return None
+    # 方法1: 使用 yfinance (首選)
+    def try_yfinance(code, period):
+        try:
+            # 確保股票代碼格式正確
+            if not code.endswith('.TW'):
+                code = f"{code}.TW"
+            
+            # 獲取股票數據
+            ticker = yf.Ticker(code)
+            hist = ticker.history(period=period)
+            
+            if hist.empty:
+                return None
+            
+            # 重置索引，將日期作為列
+            hist.reset_index(inplace=True)
+            return hist
+        
+        except Exception as e:
+            st.warning(f"yfinance 獲取失敗: {str(e)}")
+            return None
+    
+    # 方法2: 使用 twstock (備用)
+    def try_twstock(code, period):
+        try:
+            import twstock
+            
+            # 去除 .TW 後綴
+            clean_code = code.replace('.TW', '')
+            
+            # 計算日期範圍
+            from datetime import datetime, timedelta
+            end_date = datetime.now()
+            
+            if period == "1y":
+                start_date = end_date - timedelta(days=365)
+            elif period == "2y":
+                start_date = end_date - timedelta(days=730)
+            elif period == "3y":
+                start_date = end_date - timedelta(days=1095)
+            elif period == "5y":
+                start_date = end_date - timedelta(days=1825)
+            else:
+                start_date = end_date - timedelta(days=365)
+            
+            # 獲取股票數據
+            stock = twstock.Stock(clean_code)
+            data = stock.fetch_from(start_date.year, start_date.month)
+            
+            if not data:
+                return None
+            
+            # 轉換為 DataFrame
+            df_data = []
+            for record in data:
+                df_data.append({
+                    'Date': record.date,
+                    'Open': record.open,
+                    'High': record.high,
+                    'Low': record.low,
+                    'Close': record.close,
+                    'Volume': record.capacity
+                })
+            
+            df = pd.DataFrame(df_data)
+            return df
+            
+        except ImportError:
+            st.warning("twstock 套件未安裝，嘗試安裝...")
+            try:
+                import subprocess
+                import sys
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "twstock"])
+                import twstock
+                return try_twstock(code, period)  # 遞歸重試
+            except:
+                st.error("無法安裝 twstock 套件")
+                return None
+        except Exception as e:
+            st.warning(f"twstock 獲取失敗: {str(e)}")
+            return None
+    
+    # 方法3: 使用 TWSE API (備用)
+    def try_twse_api(code, period):
+        try:
+            import requests
+            import json
+            from datetime import datetime, timedelta
+            
+            # 去除 .TW 後綴
+            clean_code = code.replace('.TW', '')
+            
+            # 計算日期範圍 (TWSE API 有限制，只能獲取較短期間)
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=60)  # 只獲取最近60天
+            
+            # TWSE API 請求
+            url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+            
+            df_list = []
+            current_date = start_date
+            
+            while current_date <= end_date:
+                params = {
+                    'response': 'json',
+                    'date': current_date.strftime('%Y%m%d'),
+                    'stockNo': clean_code
+                }
+                
+                try:
+                    response = requests.get(url, params=params, timeout=10)
+                    data = response.json()
+                    
+                    if 'data' in data and data['data']:
+                        for row in data['data']:
+                            try:
+                                date_str = row[0].replace('/', '-')
+                                df_list.append({
+                                    'Date': pd.to_datetime(f"2023-{date_str}"),  # 簡化日期處理
+                                    'Open': float(row[3].replace(',', '')),
+                                    'High': float(row[4].replace(',', '')),
+                                    'Low': float(row[5].replace(',', '')),
+                                    'Close': float(row[6].replace(',', '')),
+                                    'Volume': int(row[1].replace(',', ''))
+                                })
+                            except:
+                                continue
+                
+                except:
+                    pass
+                
+                current_date += timedelta(days=30)
+            
+            if df_list:
+                df = pd.DataFrame(df_list)
+                df = df.sort_values('Date').reset_index(drop=True)
+                return df
+            
+            return None
+            
+        except Exception as e:
+            st.warning(f"TWSE API 獲取失敗: {str(e)}")
+            return None
+    
+    # 方法4: 生成模擬數據 (最後備用)
+    def generate_mock_data(code, period):
+        try:
+            st.warning("🔧 無法獲取真實數據，生成模擬數據供演示使用")
+            
+            from datetime import datetime, timedelta
+            import numpy as np
+            
+            # 計算日期範圍
+            end_date = datetime.now()
+            if period == "1y":
+                days = 252  # 一年交易日
+                start_date = end_date - timedelta(days=365)
+            elif period == "2y":
+                days = 504
+                start_date = end_date - timedelta(days=730)
+            else:
+                days = 252
+                start_date = end_date - timedelta(days=365)
+            
+            # 生成日期序列
+            date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+            date_range = [d for d in date_range if d.weekday() < 5]  # 只保留工作日
+            
+            # 根據股票代碼設定基準價格
+            base_prices = {
+                '2330': 500,  # 台積電
+                '2317': 100,  # 鴻海
+                '2454': 800,  # 聯發科
+                '0050': 150,  # 0050
+                '2891': 25,   # 中信金
+            }
+            
+            clean_code = code.replace('.TW', '')
+            base_price = base_prices.get(clean_code, 100)
+            
+            # 生成隨機價格序列
+            np.random.seed(hash(clean_code) % 1000)  # 根據股票代碼生成一致的隨機序列
+            returns = np.random.normal(0.001, 0.02, len(date_range))  # 日報酬率
+            
+            prices = [base_price]
+            for ret in returns[1:]:
+                new_price = prices[-1] * (1 + ret)
+                prices.append(max(new_price, 1))  # 確保價格不為負
+            
+            # 生成 OHLC 數據
+            df_data = []
+            for i, date in enumerate(date_range):
+                close_price = prices[i]
+                daily_volatility = close_price * 0.02
+                
+                high = close_price + np.random.uniform(0, daily_volatility)
+                low = close_price - np.random.uniform(0, daily_volatility)
+                open_price = low + np.random.uniform(0, high - low)
+                volume = int(np.random.uniform(1000000, 10000000))
+                
+                df_data.append({
+                    'Date': date,
+                    'Open': round(open_price, 2),
+                    'High': round(high, 2),
+                    'Low': round(low, 2),
+                    'Close': round(close_price, 2),
+                    'Volume': volume
+                })
+            
+            df = pd.DataFrame(df_data)
+            st.info(f"📊 生成了 {len(df)} 天的模擬數據用於演示")
+            return df
+            
+        except Exception as e:
+            st.error(f"生成模擬數據失敗: {str(e)}")
+            return None
+    
+    # 依序嘗試各種方法
+    st.info(f"🔍 正在從多個來源獲取 {stock_code} 的股價數據...")
+    
+    # 嘗試 yfinance
+    with st.spinner("📊 嘗試 Yahoo Finance..."):
+        data = try_yfinance(stock_code, period)
+        if data is not None and len(data) > 50:
+            st.success("✅ 成功從 Yahoo Finance 獲取數據")
+            return data
+    
+    # 嘗試 twstock
+    with st.spinner("📊 嘗試 TWStock..."):
+        data = try_twstock(stock_code, period)
+        if data is not None and len(data) > 50:
+            st.success("✅ 成功從 TWStock 獲取數據")
+            return data
+    
+    # 嘗試 TWSE API
+    with st.spinner("📊 嘗試 TWSE API..."):
+        data = try_twse_api(stock_code, period)
+        if data is not None and len(data) > 10:
+            st.success("✅ 成功從 TWSE API 獲取數據")
+            return data
+    
+    # 最後使用模擬數據
+    with st.spinner("📊 生成模擬數據..."):
+        data = generate_mock_data(stock_code, period)
+        if data is not None:
+            return data
+    
+    # 所有方法都失敗
+    st.error(f"❌ 無法從任何來源獲取 {stock_code} 的數據")
+    return None
 
 # 計算布林通道策略
 def calculate_bollinger_bands(df, window=20, num_std=2):
@@ -278,59 +510,219 @@ def show_stock_screener(stock_data):
     # 篩選控制面板
     st.sidebar.markdown("### 📊 篩選條件設定")
     
-    # ROE篩選
+    # ROE篩選 - 改為滑動條，範圍 -100 到 100
+    st.sidebar.subheader("📊 ROE 最低標準 (%)")
+    roe_default = st.session_state.get('roe_preset', 15.0)
     roe_min = st.sidebar.slider(
-        "ROE 最低標準 (%)",
-        min_value=0.0,
-        max_value=50.0,
-        value=10.0,
-        step=0.5
+        "ROE 最低值",
+        min_value=-100.0,
+        max_value=100.0,
+        value=roe_default,
+        step=0.5,
+        format="%.1f",
+        help="拖拉調整 ROE 最低要求"
     )
+    st.sidebar.write(f"當前設定: {roe_min:.1f}%")
     
-    # EPS篩選
+    # EPS篩選 - 改為滑動條
+    st.sidebar.subheader("💰 EPS 最低標準")
+    eps_default = st.session_state.get('eps_preset', 1.2)
     eps_min = st.sidebar.slider(
-        "EPS 最低標準",
-        min_value=0.0,
-        max_value=20.0,
-        value=2.0,
-        step=0.1
+        "EPS 最低值",
+        min_value=float(stock_data['EPS'].min()) if 'EPS' in stock_data.columns else 0.0,
+        max_value=float(stock_data['EPS'].max()) if 'EPS' in stock_data.columns else 20.0,
+        value=eps_default,
+        step=0.1,
+        format="%.1f",
+        help="拖拉調整 EPS 最低要求"
     )
+    st.sidebar.write(f"當前設定: {eps_min:.1f}")
     
-    # 顯示篩選結果
-    if st.sidebar.button("🔍 開始篩選", type="primary"):
+    # 年營收成長率篩選 - 改為滑動條，範圍 -100 到 100
+    st.sidebar.subheader("📈 年營收成長率最低標準 (%)")
+    annual_default = st.session_state.get('annual_preset', 30.0)
+    annual_growth_min = st.sidebar.slider(
+        "年營收成長率最低值",
+        min_value=-100.0,
+        max_value=100.0,
+        value=annual_default,
+        step=1.0,
+        format="%.1f",
+        help="拖拉調整年營收成長率最低要求"
+    )
+    st.sidebar.write(f"當前設定: {annual_growth_min:.1f}%")
+    
+    # 月營收成長率篩選 - 改為滑動條，範圍 -100 到 100
+    st.sidebar.subheader("📊 月營收成長率最低標準 (%)")
+    monthly_default = st.session_state.get('monthly_preset', 20.0)
+    monthly_growth_min = st.sidebar.slider(
+        "月營收成長率最低值",
+        min_value=-100.0,
+        max_value=100.0,
+        value=monthly_default,
+        step=1.0,
+        format="%.1f",
+        help="拖拉調整月營收成長率最低要求"
+    )
+    st.sidebar.write(f"當前設定: {monthly_growth_min:.1f}%")
+    
+    # 進階篩選選項
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🚀 快速設定")
+    
+    # 快速預設按鈕
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("💎 積極成長", help="ROE>20%, EPS>2, 年成長>30%, 月成長>30%"):
+            st.session_state.roe_preset = 20.0
+            st.session_state.eps_preset = 2.0
+            st.session_state.annual_preset = 30.0
+            st.session_state.monthly_preset = 30.0
+            st.rerun()
+            
+        if st.button("🛡️ 保守投資", help="ROE>10%, EPS>0.5, 年成長>5%, 月成長>0%"):
+            st.session_state.roe_preset = 10.0
+            st.session_state.eps_preset = 0.5
+            st.session_state.annual_preset = 5.0
+            st.session_state.monthly_preset = 0.0
+            st.rerun()
+    
+    with col2:
+        if st.button("💰 價值投資", help="ROE>15%, EPS>1, 年成長>10%, 月成長>5%"):
+            st.session_state.roe_preset = 15.0
+            st.session_state.eps_preset = 1.0
+            st.session_state.annual_preset = 10.0
+            st.session_state.monthly_preset = 5.0
+            st.rerun()
+            
+        if st.button("🔥 高成長", help="ROE>5%, EPS>0, 年成長>50%, 月成長>40%"):
+            st.session_state.roe_preset = 5.0
+            st.session_state.eps_preset = 0.0
+            st.session_state.annual_preset = 50.0
+            st.session_state.monthly_preset = 40.0
+            st.rerun()
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔧 進階選項")
+    
+    show_charts = st.sidebar.checkbox("顯示圖表分析", value=True)
+    show_raw_data = st.sidebar.checkbox("顯示原始資料", value=False)
+    
+    # 篩選按鈕
+    if st.sidebar.button("🔍 開始篩選股票", type="primary"):
+        st.session_state.filter_applied = True
+    
+    # 顯示篩選條件
+    st.markdown(f'''
+    <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin: 10px 0;">
+    <strong>篩選條件：</strong> ROE > {roe_min:.1f}%, EPS > {eps_min:.1f}, 
+    年營收成長率 > {annual_growth_min:.1f}%, 月營收成長率 > {monthly_growth_min:.1f}%
+    </div>
+    ''', unsafe_allow_html=True)
+    
+    # 執行篩選 (總是執行，不需要按鈕)
+    required_cols = ['ROE', 'EPS', '年營收成長率', '月營收成長率']
+    missing_cols = [col for col in required_cols if col not in stock_data.columns]
+    
+    if missing_cols:
+        st.warning(f"⚠️ 數據缺少以下欄位: {missing_cols}")
+        # 使用可用的欄位進行篩選
+        available_filters = []
+        if 'ROE' in stock_data.columns:
+            available_filters.append(stock_data['ROE'] >= roe_min)
+        if 'EPS' in stock_data.columns:
+            available_filters.append(stock_data['EPS'] >= eps_min)
+        
+        if available_filters:
+            filtered_stocks = stock_data[
+                pd.concat(available_filters, axis=1).all(axis=1)
+            ].copy()
+        else:
+            filtered_stocks = stock_data.copy()
+    else:
+        # 完整篩選
         filtered_stocks = stock_data[
             (stock_data['ROE'] >= roe_min) & 
-            (stock_data['EPS'] >= eps_min)
+            (stock_data['EPS'] >= eps_min) &
+            (stock_data['年營收成長率'] >= annual_growth_min) &
+            (stock_data['月營收成長率'] >= monthly_growth_min)
         ].copy()
-        
+    
+    # 顯示統計指標
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("總股票數", len(stock_data))
+    with col2:
+        st.metric("符合條件", len(filtered_stocks))
+    with col3:
+        pass_rate = len(filtered_stocks) / len(stock_data) * 100 if len(stock_data) > 0 else 0
+        st.metric("通過率", f"{pass_rate:.1f}%")
+    with col4:
         if len(filtered_stocks) > 0:
-            st.success(f"✅ 找到 {len(filtered_stocks)} 支符合條件的股票")
-            
-            # 排序並顯示結果
+            avg_roe = filtered_stocks['ROE'].mean() if 'ROE' in filtered_stocks.columns else 0
+            st.metric("平均ROE", f"{avg_roe:.1f}%")
+    
+    # 篩選結果
+    st.subheader("🏆 符合條件的股票")
+    
+    if len(filtered_stocks) == 0:
+        st.warning("⚠️ 沒有股票符合您設定的篩選條件，請調整篩選參數")
+        st.info("💡 建議放寬篩選條件，例如降低 ROE 或成長率要求")
+    else:
+        # 排序並顯示結果
+        if 'ROE' in filtered_stocks.columns:
             filtered_stocks = filtered_stocks.sort_values('ROE', ascending=False)
-            
-            # 顯示前20名
-            st.subheader("🏆 篩選結果 (前20名)")
-            display_cols = ['stock_code', 'name', 'ROE', 'EPS', '年營收成長率', '月營收成長率']
-            available_cols = [col for col in display_cols if col in filtered_stocks.columns]
-            
-            st.dataframe(
-                filtered_stocks[available_cols].head(20),
-                use_container_width=True
-            )
+        
+        # 顯示前20名
+        st.subheader(f"📊 篩選結果 (前20名，共{len(filtered_stocks)}支)")
+        display_cols = ['stock_code', 'name', 'ROE', 'EPS', '年營收成長率', '月營收成長率']
+        available_cols = [col for col in display_cols if col in filtered_stocks.columns]
+        
+        # 格式化顯示
+        df_display = filtered_stocks[available_cols].head(20).copy()
+        if 'ROE' in df_display.columns:
+            df_display['ROE'] = df_display['ROE'].round(2).astype(str) + '%'
+        if 'EPS' in df_display.columns:
+            df_display['EPS'] = df_display['EPS'].round(2)
+        if '年營收成長率' in df_display.columns:
+            df_display['年營收成長率'] = df_display['年營收成長率'].round(2).astype(str) + '%'
+        if '月營收成長率' in df_display.columns:
+            df_display['月營收成長率'] = df_display['月營收成長率'].round(2).astype(str) + '%'
+        
+        st.dataframe(df_display, use_container_width=True)
+        
+        # 圖表分析
+        if show_charts and len(filtered_stocks) > 0:
+            st.subheader("📈 圖表分析")
             
             # ROE vs EPS 散點圖
-            fig = px.scatter(
-                filtered_stocks.head(50),
-                x='ROE',
-                y='EPS',
-                hover_data=['name'],
-                title="ROE vs EPS 分布圖"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if 'ROE' in filtered_stocks.columns and 'EPS' in filtered_stocks.columns:
+                fig = px.scatter(
+                    filtered_stocks.head(50),
+                    x='ROE',
+                    y='EPS',
+                    hover_data=['name'] if 'name' in filtered_stocks.columns else None,
+                    title="ROE vs EPS 分布圖",
+                    labels={'ROE': 'ROE (%)', 'EPS': 'EPS'}
+                )
+                fig.update_layout(height=500)
+                st.plotly_chart(fig, use_container_width=True)
             
-        else:
-            st.warning("⚠️ 沒有找到符合條件的股票，請調整篩選條件")
+            # 營收成長率分布
+            if '年營收成長率' in filtered_stocks.columns:
+                fig2 = px.histogram(
+                    filtered_stocks,
+                    x='年營收成長率',
+                    title="年營收成長率分布",
+                    labels={'年營收成長率': '年營收成長率 (%)'}
+                )
+                fig2.update_layout(height=400)
+                st.plotly_chart(fig2, use_container_width=True)
+        
+        # 顯示原始資料
+        if show_raw_data:
+            st.subheader("📋 完整原始資料")
+            st.dataframe(filtered_stocks, use_container_width=True)
 
 def show_strategy_backtest(stock_data):
     """個股策略回測頁面"""
