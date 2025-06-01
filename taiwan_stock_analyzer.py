@@ -1252,154 +1252,336 @@ def show_batch_backtest(stock_data):
             st.metric("最高報酬率", f"{max_return:.2f}%")
         
         # 分類顯示結果
-        st.metric(
-            "開發時間",
-            "4個月",
-            delta="持續更新"
+        st.subheader("🏆 優質股票分析")
+        
+        # 使用優質股票結果或從完整結果中篩選
+        display_profitable = profitable_results if profitable_results is not None else display_results[display_results['總報酬率(%)'] >= 10].copy()
+        
+        if len(display_profitable) > 0:
+            # 按報酬率分類
+            超高報酬 = display_profitable[display_profitable['總報酬率(%)'] >= 50]
+            高報酬 = display_profitable[(display_profitable['總報酬率(%)'] >= 20) & (display_profitable['總報酬率(%)'] < 50)]
+            中等報酬 = display_profitable[(display_profitable['總報酬率(%)'] >= 10) & (display_profitable['總報酬率(%)'] < 20)]
+            
+            # 分頁顯示
+            tab1, tab2, tab3, tab4 = st.tabs(["🚀 超高報酬 (≥50%)", "📈 高報酬 (20-50%)", "💰 中等報酬 (10-20%)", "📋 完整列表"])
+            
+            with tab1:
+                if len(超高報酬) > 0:
+                    st.markdown(f"**找到 {len(超高報酬)} 支超高報酬股票:**")
+                    display_df = 超高報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
+                else:
+                    st.info("📊 沒有報酬率≥50%的股票")
+            
+            with tab2:
+                if len(高報酬) > 0:
+                    st.markdown(f"**找到 {len(高報酬)} 支高報酬股票:**")
+                    display_df = 高報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
+                else:
+                    st.info("📊 沒有報酬率在20-50%的股票")
+            
+            with tab3:
+                if len(中等報酬) > 0:
+                    st.markdown(f"**找到 {len(中等報酬)} 支中等報酬股票:**")
+                    display_df = 中等報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
+                else:
+                    st.info("📊 沒有報酬率在10-20%的股票")
+            
+            with tab4:
+                st.markdown(f"**所有優質股票 ({len(display_profitable)} 支):**")
+                display_df = display_profitable.sort_values('總報酬率(%)', ascending=False)
+                st.dataframe(display_df, use_container_width=True)
+        
+        else:
+            st.warning("⚠️ 沒有找到報酬率≥10%的股票")
+        
+        # 報酬率分布圖
+        st.subheader("📊 報酬率分布分析")
+        
+        fig = px.histogram(
+            display_results, 
+            x='總報酬率(%)', 
+            nbins=30,
+            title="報酬率分布",
+            labels={'總報酬率(%)': '報酬率 (%)', 'count': '股票數量'}
+        )
+        fig.add_vline(x=10, line_dash="dash", line_color="red", annotation_text="10%門檻")
+        fig.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="損益平衡")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 投資建議
+        st.subheader("💡 投資建議")
+        
+        if len(display_profitable) >= 10:
+            top_10 = display_profitable.head(10)
+            
+            st.markdown("### 🎯 推薦投資組合 (前10名)")
+            recommendation_df = top_10[['股票代碼', '總報酬率(%)', '最終資金', '交易次數']].copy()
+            st.dataframe(recommendation_df, use_container_width=True)
+            
+            avg_top10_return = top_10['總報酬率(%)'].mean()
+            st.info(f"💰 前10名平均報酬率: {avg_top10_return:.2f}%")
+        
+        # 風險提醒
+        st.markdown("### ⚠️ 風險提醒")
+        st.warning("""
+        - 過去績效不代表未來表現
+        - 建議分散投資，單一股票配置不超過總資金的5%
+        - 設定停損點，建議15-20%
+        - 定期檢視和調整投資組合
+        """)
+        
+        # 下載功能
+        st.subheader("📥 下載結果")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.download_button(
+                label="📊 下載完整回測結果",
+                data=display_results.to_csv(index=False, encoding='utf-8-sig'),
+                file_name=f"完整回測結果_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            ):
+                st.success("✅ 下載完成")
+        
+        with col2:
+            if profitable_results is not None and len(profitable_results) > 0:
+                if st.download_button(
+                    label="🏆 下載優質股票結果",
+                    data=profitable_results.to_csv(index=False, encoding='utf-8-sig'),
+                    file_name=f"優質股票結果_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    st.success("✅ 下載完成")
+    
+    except Exception as e:
+        st.error(f"❌ 載入回測結果失敗: {str(e)}")
+        st.info("💡 請確保回測結果文件格式正確")
+
+def show_portfolio_analysis(stock_data):
+    """投資組合分析頁面"""
+    st.markdown('<div class="page-header">📈 投資組合分析</div>', unsafe_allow_html=True)
+    st.info("🚧 此功能正在開發中，敬請期待！")
+    
+    if stock_data is not None:
+        st.subheader("📊 可用於組合分析的股票數量")
+        st.metric("股票總數", len(stock_data))
+
+def show_stock_filter(stock_data):
+    """股票篩選頁面"""
+    st.markdown('<div class="page-header">🔍 智能股票篩選工具</div>', unsafe_allow_html=True)
+    
+    if stock_data is None:
+        st.error("❌ 無法載入股票數據")
+        return
+    
+    # 顯示數據概覽
+    st.subheader("📊 數據概覽")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("股票總數", len(stock_data))
+    with col2:
+        valid_roe = stock_data['ROE(%)'].notna().sum()
+        st.metric("有ROE數據", valid_roe)
+    with col3:
+        valid_eps = stock_data['EPS'].notna().sum()
+        st.metric("有EPS數據", valid_eps)
+    with col4:
+        valid_revenue = stock_data['營收成長率(%)'].notna().sum()
+        st.metric("有營收數據", valid_revenue)
+    
+    # 篩選條件設定
+    st.subheader("🎛️ 篩選條件設定")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 獲利能力指標")
+        
+        # ROE篩選
+        roe_min, roe_max = st.slider(
+            "股東權益報酬率 ROE (%)",
+            min_value=float(stock_data['ROE(%)'].min()) if stock_data['ROE(%)'].notna().any() else -50.0,
+            max_value=float(stock_data['ROE(%)'].max()) if stock_data['ROE(%)'].notna().any() else 100.0,
+            value=(5.0, 30.0),
+            step=0.5,
+            help="ROE越高表示公司運用股東資金的效率越好"
+        )
+        
+        # EPS篩選
+        eps_min, eps_max = st.slider(
+            "每股盈餘 EPS (元)",
+            min_value=float(stock_data['EPS'].min()) if stock_data['EPS'].notna().any() else -10.0,
+            max_value=float(stock_data['EPS'].max()) if stock_data['EPS'].notna().any() else 50.0,
+            value=(1.0, 20.0),
+            step=0.1,
+            help="EPS越高表示每股獲利越好"
         )
     
-    # 未來規劃
-    st.subheader("🚀 未來規劃")
+    with col2:
+        st.markdown("### 🚀 成長性指標")
+        
+        # 營收成長率篩選
+        revenue_growth_min, revenue_growth_max = st.slider(
+            "營收成長率 (%)",
+            min_value=float(stock_data['營收成長率(%)'].min()) if stock_data['營收成長率(%)'].notna().any() else -50.0,
+            max_value=float(stock_data['營收成長率(%)'].max()) if stock_data['營收成長率(%)'].notna().any() else 100.0,
+            value=(0.0, 50.0),
+            step=1.0,
+            help="營收成長率越高表示公司成長越快"
+        )
+        
+        # 市值篩選（如果有的話）
+        if '市值' in stock_data.columns:
+            market_cap_min, market_cap_max = st.slider(
+                "市值 (億元)",
+                min_value=float(stock_data['市值'].min()) if stock_data['市值'].notna().any() else 10.0,
+                max_value=float(stock_data['市值'].max()) if stock_data['市值'].notna().any() else 10000.0,
+                value=(50.0, 5000.0),
+                step=10.0,
+                help="市值篩選，避免過小或過大的公司"
+            )
     
-    st.markdown("""
-    <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107;">
-    <h4>🔮 版本 4.0.0 規劃中</h4>
-    <ul>
-        <li>🤖 <strong>機器學習預測</strong>: 股價趨勢預測模型</li>
-        <li>📱 <strong>移動端優化</strong>: 更好的手機端體驗</li>
-        <li>🔔 <strong>即時通知</strong>: 股票價格和策略信號提醒</li>
-        <li>🌍 <strong>多市場支援</strong>: 擴展至美股、港股等市場</li>
-        <li>🔗 <strong>API接口</strong>: 提供程式化交易接口</li>
-        <li>👥 <strong>用戶系統</strong>: 個人化設定和投資組合保存</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
+    # 快速預設策略
+    st.subheader("⚡ 快速預設策略")
     
-    # 技術債務和改進計劃
-    st.subheader("🔧 技術改進計劃")
+    col1, col2, col3 = st.columns(3)
     
-    improvement_data = {
-        "改進項目": [
-            "效能優化",
-            "快取機制",
-            "多語言支援",
-            "單元測試",
-            "API文檔",
-            "安全性增強"
-        ],
-        "優先級": [
-            "高",
-            "高",
-            "中",
-            "中",
-            "低",
-            "高"
-        ],
-        "預計完成": [
-            "v3.1.0",
-            "v3.1.0",
-            "v4.0.0",
-            "v3.2.0",
-            "v4.0.0",
-            "v3.1.0"
-        ],
-        "狀態": [
-            "進行中",
-            "計劃中",
-            "計劃中",
-            "計劃中",
-            "計劃中",
-            "進行中"
+    with col1:
+        if st.button("🚀 積極成長型", use_container_width=True):
+            # 設定積極成長的參數
+            st.info("設定為: ROE>15%, EPS>3, 營收成長>20%")
+    
+    with col2:
+        if st.button("💰 價值投資型", use_container_width=True):
+            # 設定價值投資的參數
+            st.info("設定為: ROE>10%, EPS>2, 本益比<20")
+    
+    with col3:
+        if st.button("🛡️ 保守穩健型", use_container_width=True):
+            # 設定保守的參數
+            st.info("設定為: ROE>8%, EPS>1, 負債比<50%")
+    
+    # 執行篩選
+    filtered_data = stock_data.copy()
+    
+    # 應用ROE篩選
+    if stock_data['ROE(%)'].notna().any():
+        filtered_data = filtered_data[
+            (filtered_data['ROE(%)'] >= roe_min) & 
+            (filtered_data['ROE(%)'] <= roe_max)
         ]
-    }
     
-    st.dataframe(pd.DataFrame(improvement_data), use_container_width=True)
+    # 應用EPS篩選
+    if stock_data['EPS'].notna().any():
+        filtered_data = filtered_data[
+            (filtered_data['EPS'] >= eps_min) & 
+            (filtered_data['EPS'] <= eps_max)
+        ]
     
-    # 意見回饋
-    st.subheader("💬 意見回饋")
+    # 應用營收成長率篩選
+    if stock_data['營收成長率(%)'].notna().any():
+        filtered_data = filtered_data[
+            (filtered_data['營收成長率(%)'] >= revenue_growth_min) & 
+            (filtered_data['營收成長率(%)'] <= revenue_growth_max)
+        ]
     
-    st.markdown("""
-    <div style="background-color: #d4edda; padding: 15px; border-radius: 10px; border-left: 5px solid #28a745;">
-    <h4>📝 我們重視您的意見</h4>
-    <p>如果您有任何功能建議、問題回報或改進意見，歡迎透過以下方式聯繫我們：</p>
-    <ul>
-        <li>🐛 <strong>GitHub Issues</strong>: 回報問題和建議功能</li>
-        <li>💡 <strong>功能建議</strong>: 提出新功能想法</li>
-        <li>🔧 <strong>貢獻代碼</strong>: 歡迎提交 Pull Request</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
+    # 顯示篩選結果
+    st.subheader(f"🎯 篩選結果 ({len(filtered_data)} 支股票)")
     
-    # 更新日誌下載
-    st.subheader("📥 更新日誌")
+    if len(filtered_data) > 0:
+        # 結果統計
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            avg_roe = filtered_data['ROE(%)'].mean()
+            st.metric("平均ROE", f"{avg_roe:.2f}%" if not pd.isna(avg_roe) else "N/A")
+        
+        with col2:
+            avg_eps = filtered_data['EPS'].mean()
+            st.metric("平均EPS", f"{avg_eps:.2f}" if not pd.isna(avg_eps) else "N/A")
+        
+        with col3:
+            avg_revenue_growth = filtered_data['營收成長率(%)'].mean()
+            st.metric("平均營收成長", f"{avg_revenue_growth:.2f}%" if not pd.isna(avg_revenue_growth) else "N/A")
+        
+        with col4:
+            st.metric("篩選比例", f"{len(filtered_data)/len(stock_data)*100:.1f}%")
+        
+        # 顯示篩選結果表格
+        st.dataframe(
+            filtered_data[['stock_code', 'name', 'ROE(%)', 'EPS', '營收成長率(%)']].head(20),
+            use_container_width=True
+        )
+        
+        # 下載功能
+        if st.download_button(
+            label="📥 下載篩選結果",
+            data=filtered_data.to_csv(index=False, encoding='utf-8-sig'),
+            file_name=f"篩選股票_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        ):
+            st.success("✅ 下載完成")
     
-    changelog_content = """
-# 台灣股票分析平台 - 更新日誌
+    else:
+        st.warning("⚠️ 沒有股票符合您的篩選條件，請調整篩選參數")
 
-## 版本 3.0.0 (2024-12-XX)
-### 新功能
-- 版本更新頁面
-- 投資組合分析功能
-- 策略參數優化
-
-### 改進
-- 數據載入速度提升
-- 界面設計優化
-- 響應式布局改善
-
-### 修復
-- 數據篩選邊界條件
-- 圖表顯示異常
-- 記憶體使用優化
-
-## 版本 2.5.0 (2024-11-XX)
-### 新功能
-- 布林通道策略回測
-- 股價走勢圖
-- 投資組合追蹤
-
-### 改進
-- 策略表現對比
-- 參數自訂功能
-- 數據視覺化增強
-
-## 版本 2.0.0 (2024-10-XX)
-### 新功能
-- 智能股票篩選
-- 滑動條界面
-- 快速預設策略
-
-### 改進
-- 726支股票數據
-- 搜尋篩選功能
-- 統計指標顯示
-
-## 版本 1.5.0 (2024-09-XX)
-### 新功能
-- Streamlit Cloud部署
-- 自動化部署
-- 數據更新機制
-
-### 改進
-- 啟動速度優化
-- 數據載入機制
-- 錯誤處理增強
-
-## 版本 1.0.0 (2024-08-XX)
-### 初始功能
-- 基礎股票分析
-- 數據爬蟲
-- Streamlit界面
-- 數據處理
-"""
+def main():
+    """主函數"""
+    # 載入股票數據
+    stock_data = load_stock_data()
     
-    st.download_button(
-        label="📥 下載完整更新日誌",
-        data=changelog_content,
-        file_name="changelog.md",
-        mime="text/markdown",
-        help="下載完整的版本更新日誌文件"
+    # 主標題
+    st.markdown('<div class="main-header">📈 台灣股票分析平台</div>', unsafe_allow_html=True)
+    
+    # 側邊欄導航
+    st.sidebar.markdown("## 🧭 功能導航")
+    
+    page = st.sidebar.selectbox(
+        "選擇功能頁面",
+        [
+            "🔍 智能股票篩選",
+            "📊 個股策略回測", 
+            "🎯 多策略批量回測",
+            "📈 投資組合分析"
+        ]
     )
+    
+    # 根據選擇顯示對應頁面
+    if page == "🔍 智能股票篩選":
+        show_stock_filter(stock_data)
+    elif page == "📊 個股策略回測":
+        show_individual_backtest(stock_data)
+    elif page == "🎯 多策略批量回測":
+        show_batch_backtest(stock_data)
+    elif page == "📈 投資組合分析":
+        show_portfolio_analysis(stock_data)
+    
+    # 側邊欄信息
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ℹ️ 關於平台")
+    st.sidebar.info("""
+    **台灣股票分析平台 v3.2.0**
+    
+    🎯 **主要功能:**
+    - 智能股票篩選
+    - 布林通道策略回測
+    - 突破策略回測
+    - 投資組合分析
+    
+    📊 **數據來源:**
+    - 台灣證券交易所 (TWSE)
+    - 櫃買中心 (TPEx)
+    
+    ⚠️ **免責聲明:**
+    本平台僅供學習和研究使用，
+    不構成投資建議。
+    """)
 
 if __name__ == "__main__":
     main() 
