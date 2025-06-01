@@ -318,268 +318,420 @@ def bollinger_strategy_backtest(df, initial_capital=100000):
         'df_with_indicators': df
     }
 
-# 主應用
-def main():
-    # 側邊欄 - 頁面選擇
-    st.sidebar.markdown('<div class="main-header">📈 台灣股票分析平台</div>', unsafe_allow_html=True)
+# 突破策略相關函數
+def calculate_breakout_indicators(df):
+    """計算突破策略需要的技術指標"""
+    if df is None or len(df) < 60:
+        return df
     
-    page = st.sidebar.selectbox(
-        "選擇功能頁面",
-        ["🔍 股票篩選工具", "📊 個股策略回測", "📈 投資組合分析", "🎯 批量回測結果", "🔄 版本更新"],
-        index=0
-    )
+    df = df.copy()
     
-    # 載入股票數據
-    stock_data = load_stock_data()
+    # 計算移動平均線
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['MA60'] = df['Close'].rolling(window=60).mean()
+    df['MA10'] = df['Close'].rolling(window=10).mean()
     
-    if page == "🔍 股票篩選工具":
-        show_stock_screener(stock_data)
-    elif page == "📊 個股策略回測":
-        show_strategy_backtest(stock_data)
-    elif page == "📈 投資組合分析":
-        show_portfolio_analysis(stock_data)
-    elif page == "🎯 批量回測結果":
-        show_backtest_results()
-    elif page == "🔄 版本更新":
-        show_version_updates()
+    # 計算20日最高價
+    df['High20'] = df['High'].rolling(window=20).max()
+    
+    # 計算5日平均成交量
+    df['Volume_MA5'] = df['Volume'].rolling(window=5).mean()
+    
+    return df
 
-def show_stock_screener(stock_data):
-    """股票篩選工具頁面"""
-    st.markdown('<div class="page-header">🔍 股票篩選工具</div>', unsafe_allow_html=True)
+def breakout_strategy_backtest(df, initial_capital=100000, stop_loss_pct=6, take_profit_pct=15):
+    """突破策略回測"""
+    if df is None or len(df) < 60:
+        return None
     
-    if stock_data is None:
-        st.error("❌ 無法載入股票數據，請確保數據文件存在")
-        return
+    # 添加技術指標
+    df = calculate_breakout_indicators(df)
     
-    # 篩選控制面板
-    st.sidebar.markdown("### 📊 篩選條件設定")
+    # 去除NaN值
+    df = df.dropna().copy()
     
-    # ROE篩選 - 改為滑動條，範圍 -100 到 100
-    st.sidebar.subheader("📊 ROE 最低標準 (%)")
-    roe_default = st.session_state.get('roe_preset', 15.0)
-    roe_min = st.sidebar.slider(
-        "ROE 最低值",
-        min_value=-100.0,
-        max_value=100.0,
-        value=roe_default,
-        step=0.5,
-        format="%.1f",
-        help="拖拉調整 ROE 最低要求"
-    )
-    st.sidebar.write(f"當前設定: {roe_min:.1f}%")
+    if len(df) < 10:
+        return None
     
-    # EPS篩選 - 改為滑動條
-    st.sidebar.subheader("💰 EPS 最低標準")
-    eps_default = st.session_state.get('eps_preset', 1.2)
-    eps_min = st.sidebar.slider(
-        "EPS 最低值",
-        min_value=float(stock_data['EPS'].min()) if 'EPS' in stock_data.columns else 0.0,
-        max_value=float(stock_data['EPS'].max()) if 'EPS' in stock_data.columns else 20.0,
-        value=eps_default,
-        step=0.1,
-        format="%.1f",
-        help="拖拉調整 EPS 最低要求"
-    )
-    st.sidebar.write(f"當前設定: {eps_min:.1f}")
+    # 初始化變量
+    position = 0  # 0: 無持股, 1: 持股
+    capital = initial_capital
+    shares = 0
+    trades = []
+    entry_price = 0
     
-    # 年營收成長率篩選 - 改為滑動條，範圍 -100 到 100
-    st.sidebar.subheader("📈 年營收成長率最低標準 (%)")
-    annual_default = st.session_state.get('annual_preset', 30.0)
-    annual_growth_min = st.sidebar.slider(
-        "年營收成長率最低值",
-        min_value=-100.0,
-        max_value=100.0,
-        value=annual_default,
-        step=1.0,
-        format="%.1f",
-        help="拖拉調整年營收成長率最低要求"
-    )
-    st.sidebar.write(f"當前設定: {annual_growth_min:.1f}%")
+    # 記錄每日資產價值
+    portfolio_values = []
     
-    # 月營收成長率篩選 - 改為滑動條，範圍 -100 到 100
-    st.sidebar.subheader("📊 月營收成長率最低標準 (%)")
-    monthly_default = st.session_state.get('monthly_preset', 20.0)
-    monthly_growth_min = st.sidebar.slider(
-        "月營收成長率最低值",
-        min_value=-100.0,
-        max_value=100.0,
-        value=monthly_default,
-        step=1.0,
-        format="%.1f",
-        help="拖拉調整月營收成長率最低要求"
-    )
-    st.sidebar.write(f"當前設定: {monthly_growth_min:.1f}%")
-    
-    # 進階篩選選項
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🚀 快速設定")
-    
-    # 快速預設按鈕
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("💎 積極成長", help="ROE>20%, EPS>2, 年成長>30%, 月成長>30%"):
-            st.session_state.roe_preset = 20.0
-            st.session_state.eps_preset = 2.0
-            st.session_state.annual_preset = 30.0
-            st.session_state.monthly_preset = 30.0
-            st.rerun()
-            
-        if st.button("🛡️ 保守投資", help="ROE>10%, EPS>0.5, 年成長>5%, 月成長>0%"):
-            st.session_state.roe_preset = 10.0
-            st.session_state.eps_preset = 0.5
-            st.session_state.annual_preset = 5.0
-            st.session_state.monthly_preset = 0.0
-            st.rerun()
-    
-    with col2:
-        if st.button("💰 價值投資", help="ROE>15%, EPS>1, 年成長>10%, 月成長>5%"):
-            st.session_state.roe_preset = 15.0
-            st.session_state.eps_preset = 1.0
-            st.session_state.annual_preset = 10.0
-            st.session_state.monthly_preset = 5.0
-            st.rerun()
-            
-        if st.button("🔥 高成長", help="ROE>5%, EPS>0, 年成長>50%, 月成長>40%"):
-            st.session_state.roe_preset = 5.0
-            st.session_state.eps_preset = 0.0
-            st.session_state.annual_preset = 50.0
-            st.session_state.monthly_preset = 40.0
-            st.rerun()
-    
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔧 進階選項")
-    
-    show_charts = st.sidebar.checkbox("顯示圖表分析", value=True)
-    show_raw_data = st.sidebar.checkbox("顯示原始資料", value=False)
-    
-    # 篩選按鈕
-    if st.sidebar.button("🔍 開始篩選股票", type="primary"):
-        st.session_state.filter_applied = True
-    
-    # 顯示篩選條件
-    st.markdown(f'''
-    <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin: 10px 0;">
-    <strong>篩選條件：</strong> ROE > {roe_min:.1f}%, EPS > {eps_min:.1f}, 
-    年營收成長率 > {annual_growth_min:.1f}%, 月營收成長率 > {monthly_growth_min:.1f}%
-    </div>
-    ''', unsafe_allow_html=True)
-    
-    # 執行篩選 (總是執行，不需要按鈕)
-    required_cols = ['ROE', 'EPS', '年營收成長率', '月營收成長率']
-    missing_cols = [col for col in required_cols if col not in stock_data.columns]
-    
-    if missing_cols:
-        st.warning(f"⚠️ 數據缺少以下欄位: {missing_cols}")
-        # 使用可用的欄位進行篩選
-        available_filters = []
-        if 'ROE' in stock_data.columns:
-            available_filters.append(stock_data['ROE'] >= roe_min)
-        if 'EPS' in stock_data.columns:
-            available_filters.append(stock_data['EPS'] >= eps_min)
+    for i in range(1, len(df)):
+        current_row = df.iloc[i]
+        prev_row = df.iloc[i-1]
         
-        if available_filters:
-            filtered_stocks = stock_data[
-                pd.concat(available_filters, axis=1).all(axis=1)
-            ].copy()
+        current_price = current_row['Close']
+        current_high = current_row['High']
+        current_volume = current_row['Volume']
+        
+        # 進場條件檢查
+        if position == 0:
+            # 1. 趨勢判斷：股價站上20日與60日均線
+            trend_condition = (current_price > current_row['MA20'] and 
+                             current_price > current_row['MA60'])
+            
+            # 2. 突破進場：當天收盤價 > 最近20日高點
+            breakout_condition = current_price > prev_row['High20']
+            
+            # 3. 成交量過濾：進場日成交量 > 前5日平均量
+            volume_condition = current_volume > current_row['Volume_MA5']
+            
+            # 所有條件滿足才進場
+            if trend_condition and breakout_condition and volume_condition:
+                # 買入
+                shares = capital // current_price
+                if shares > 0:
+                    entry_price = current_price
+                    capital -= shares * current_price
+                    position = 1
+                    trades.append({
+                        'Date': current_row['Date'],
+                        'Action': 'BUY',
+                        'Price': current_price,
+                        'Shares': shares,
+                        'Capital': capital,
+                        'Signal': 'Breakout + Volume + Trend'
+                    })
+        
+        # 出場條件檢查
+        elif position == 1:
+            exit_signal = ""
+            should_exit = False
+            
+            # 1. 停損：收盤價跌破進場價 - 6%
+            stop_loss_price = entry_price * (1 - stop_loss_pct / 100)
+            if current_price <= stop_loss_price:
+                should_exit = True
+                exit_signal = f"Stop Loss (-{stop_loss_pct:.1f}%)"
+            
+            # 2. 停利：達到 +15% 報酬
+            elif current_price >= entry_price * (1 + take_profit_pct / 100):
+                should_exit = True
+                exit_signal = f"Take Profit (+{take_profit_pct:.1f}%)"
+            
+            # 3. 追蹤出場：跌破10日均線
+            elif current_price < current_row['MA10']:
+                should_exit = True
+                exit_signal = "Below MA10"
+            
+            if should_exit:
+                # 賣出
+                capital += shares * current_price
+                return_pct = (current_price - entry_price) / entry_price * 100
+                trades.append({
+                    'Date': current_row['Date'],
+                    'Action': 'SELL',
+                    'Price': current_price,
+                    'Shares': shares,
+                    'Capital': capital,
+                    'Signal': exit_signal,
+                    'Return': return_pct
+                })
+                shares = 0
+                position = 0
+                entry_price = 0
+        
+        # 計算當前投資組合價值
+        if position == 1:
+            portfolio_value = capital + shares * current_price
         else:
-            filtered_stocks = stock_data.copy()
-    else:
-        # 完整篩選
-        filtered_stocks = stock_data[
-            (stock_data['ROE'] >= roe_min) & 
-            (stock_data['EPS'] >= eps_min) &
-            (stock_data['年營收成長率'] >= annual_growth_min) &
-            (stock_data['月營收成長率'] >= monthly_growth_min)
-        ].copy()
+            portfolio_value = capital
+        
+        portfolio_values.append({
+            'Date': current_row['Date'],
+            'Portfolio_Value': portfolio_value,
+            'Stock_Price': current_price
+        })
     
-    # 顯示統計指標
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("總股票數", len(stock_data))
-    with col2:
-        st.metric("符合條件", len(filtered_stocks))
-    with col3:
-        pass_rate = len(filtered_stocks) / len(stock_data) * 100 if len(stock_data) > 0 else 0
-        st.metric("通過率", f"{pass_rate:.1f}%")
-    with col4:
-        if len(filtered_stocks) > 0:
-            avg_roe = filtered_stocks['ROE'].mean() if 'ROE' in filtered_stocks.columns else 0
-            st.metric("平均ROE", f"{avg_roe:.1f}%")
+    # 如果最後還持有股票，以最後價格賣出
+    if position == 1:
+        final_price = df.iloc[-1]['Close']
+        return_pct = (final_price - entry_price) / entry_price * 100
+        capital += shares * final_price
+        trades.append({
+            'Date': df.iloc[-1]['Date'],
+            'Action': 'SELL (Final)',
+            'Price': final_price,
+            'Shares': shares,
+            'Capital': capital,
+            'Signal': 'Final Exit',
+            'Return': return_pct
+        })
     
-    # 篩選結果
-    st.subheader("🏆 符合條件的股票")
-    
-    if len(filtered_stocks) == 0:
-        st.warning("⚠️ 沒有股票符合您設定的篩選條件，請調整篩選參數")
-        st.info("💡 建議放寬篩選條件，例如降低 ROE 或成長率要求")
-    else:
-        # 排序並顯示結果
-        if 'ROE' in filtered_stocks.columns:
-            filtered_stocks = filtered_stocks.sort_values('ROE', ascending=False)
-        
-        # 顯示前20名
-        st.subheader(f"📊 篩選結果 (前20名，共{len(filtered_stocks)}支)")
-        display_cols = ['stock_code', 'name', 'ROE', 'EPS', '年營收成長率', '月營收成長率']
-        available_cols = [col for col in display_cols if col in filtered_stocks.columns]
-        
-        # 格式化顯示
-        df_display = filtered_stocks[available_cols].head(20).copy()
-        if 'ROE' in df_display.columns:
-            df_display['ROE'] = df_display['ROE'].round(2).astype(str) + '%'
-        if 'EPS' in df_display.columns:
-            df_display['EPS'] = df_display['EPS'].round(2)
-        if '年營收成長率' in df_display.columns:
-            df_display['年營收成長率'] = df_display['年營收成長率'].round(2).astype(str) + '%'
-        if '月營收成長率' in df_display.columns:
-            df_display['月營收成長率'] = df_display['月營收成長率'].round(2).astype(str) + '%'
-        
-        st.dataframe(df_display, use_container_width=True)
-        
-        # 圖表分析
-        if show_charts and len(filtered_stocks) > 0:
-            st.subheader("📈 圖表分析")
-            
-            # ROE vs EPS 散點圖
-            if 'ROE' in filtered_stocks.columns and 'EPS' in filtered_stocks.columns:
-                fig = px.scatter(
-                    filtered_stocks.head(50),
-                    x='ROE',
-                    y='EPS',
-                    hover_data=['name'] if 'name' in filtered_stocks.columns else None,
-                    title="ROE vs EPS 分布圖",
-                    labels={'ROE': 'ROE (%)', 'EPS': 'EPS'}
-                )
-                fig.update_layout(height=500)
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # 營收成長率分布
-            if '年營收成長率' in filtered_stocks.columns:
-                fig2 = px.histogram(
-                    filtered_stocks,
-                    x='年營收成長率',
-                    title="年營收成長率分布",
-                    labels={'年營收成長率': '年營收成長率 (%)'}
-                )
-                fig2.update_layout(height=400)
-                st.plotly_chart(fig2, use_container_width=True)
-        
-        # 顯示原始資料
-        if show_raw_data:
-            st.subheader("📋 完整原始資料")
-            st.dataframe(filtered_stocks, use_container_width=True)
+    return {
+        'final_capital': capital,
+        'total_return': (capital - initial_capital) / initial_capital * 100,
+        'trades': trades,
+        'portfolio_values': pd.DataFrame(portfolio_values),
+        'df_with_indicators': df
+    }
 
-def show_strategy_backtest(stock_data):
-    """個股策略回測頁面"""
-    st.markdown('<div class="page-header">📊 個股策略回測</div>', unsafe_allow_html=True)
+# 顯示回測結果的統一UI函數
+def show_backtest_results_ui(backtest_result, stock_code, stock_name, strategy_name, initial_capital, stop_loss_pct=None, take_profit_pct=None):
+    """統一顯示回測結果的UI"""
+    # 顯示回測結果
+    st.subheader("📊 回測結果")
     
-    # 添加分頁選擇
-    tab1, tab2 = st.tabs(["📈 個股回測", "🎯 批量回測"])
+    col1, col2, col3, col4 = st.columns(4)
     
-    with tab1:
-        show_individual_backtest(stock_data)
+    with col1:
+        st.metric(
+            "初始資金",
+            f"${initial_capital:,.0f}",
+        )
     
-    with tab2:
-        show_batch_backtest(stock_data)
+    with col2:
+        st.metric(
+            "最終資金",
+            f"${backtest_result['final_capital']:,.0f}",
+        )
+    
+    with col3:
+        total_return = backtest_result['total_return']
+        st.metric(
+            "總報酬率",
+            f"{total_return:.2f}%",
+            delta=f"{total_return:.2f}%"
+        )
+    
+    with col4:
+        num_trades = len(backtest_result['trades'])
+        st.metric(
+            "交易次數",
+            f"{num_trades} 次"
+        )
+    
+    # 策略表現圖表
+    st.subheader(f"📈 {strategy_name}表現圖")
+    
+    df_with_indicators = backtest_result['df_with_indicators']
+    
+    fig = go.Figure()
+    
+    # 股價線
+    fig.add_trace(go.Scatter(
+        x=df_with_indicators['Date'],
+        y=df_with_indicators['Close'],
+        mode='lines',
+        name='收盤價',
+        line=dict(color='black', width=2)
+    ))
+    
+    # 根據策略類型添加不同的指標線
+    if strategy_name == "布林通道策略":
+        # 布林通道
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['Upper_Band'],
+            mode='lines',
+            name='上軌',
+            line=dict(color='red', width=1, dash='dash')
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['MA'],
+            mode='lines',
+            name='中軌(MA)',
+            line=dict(color='blue', width=1)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['Lower_Band'],
+            mode='lines',
+            name='下軌',
+            line=dict(color='green', width=1, dash='dash')
+        ))
+    
+    elif strategy_name == "突破策略":
+        # 移動平均線
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['MA20'],
+            mode='lines',
+            name='MA20',
+            line=dict(color='blue', width=1)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['MA60'],
+            mode='lines',
+            name='MA60',
+            line=dict(color='orange', width=1)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['MA10'],
+            mode='lines',
+            name='MA10',
+            line=dict(color='purple', width=1, dash='dot')
+        ))
+        
+        # 20日最高點線
+        fig.add_trace(go.Scatter(
+            x=df_with_indicators['Date'],
+            y=df_with_indicators['High20'],
+            mode='lines',
+            name='20日最高',
+            line=dict(color='red', width=1, dash='dash')
+        ))
+    
+    # 標記買賣點
+    trades_df = pd.DataFrame(backtest_result['trades'])
+    if not trades_df.empty:
+        buy_trades = trades_df[trades_df['Action'] == 'BUY']
+        sell_trades = trades_df[trades_df['Action'].str.contains('SELL')]
+        
+        if not buy_trades.empty:
+            fig.add_trace(go.Scatter(
+                x=buy_trades['Date'],
+                y=buy_trades['Price'],
+                mode='markers',
+                name='買入',
+                marker=dict(color='green', size=10, symbol='triangle-up'),
+                text=buy_trades.get('Signal', ['買入'] * len(buy_trades)),
+                hovertemplate='<b>買入</b><br>日期: %{x}<br>價格: %{y:.2f}<br>信號: %{text}'
+            ))
+        
+        if not sell_trades.empty:
+            sell_signals = sell_trades.get('Signal', ['賣出'] * len(sell_trades))
+            returns = sell_trades.get('Return', [0] * len(sell_trades))
+            hover_text = [f"{signal}<br>報酬: {ret:.2f}%" for signal, ret in zip(sell_signals, returns)]
+            
+            fig.add_trace(go.Scatter(
+                x=sell_trades['Date'],
+                y=sell_trades['Price'],
+                mode='markers',
+                name='賣出',
+                marker=dict(color='red', size=10, symbol='triangle-down'),
+                text=hover_text,
+                hovertemplate='<b>賣出</b><br>日期: %{x}<br>價格: %{y:.2f}<br>%{text}'
+            ))
+    
+    fig.update_layout(
+        title=f"{stock_code} - {stock_name} {strategy_name}回測",
+        xaxis_title="日期",
+        yaxis_title="股價 (TWD)",
+        hovermode='x unified',
+        height=600,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 投資組合價值曲線
+    if not backtest_result['portfolio_values'].empty:
+        st.subheader("💰 投資組合價值變化")
+        
+        portfolio_df = backtest_result['portfolio_values']
+        
+        # 計算買入持有策略比較
+        first_price = portfolio_df.iloc[0]['Stock_Price']
+        last_price = portfolio_df.iloc[-1]['Stock_Price']
+        buy_hold_return = (last_price - first_price) / first_price * 100
+        buy_hold_final = initial_capital * (1 + buy_hold_return / 100)
+        
+        portfolio_df['Buy_Hold_Value'] = initial_capital * (portfolio_df['Stock_Price'] / first_price)
+        
+        fig2 = go.Figure()
+        
+        fig2.add_trace(go.Scatter(
+            x=portfolio_df['Date'],
+            y=portfolio_df['Portfolio_Value'],
+            mode='lines',
+            name=strategy_name,
+            line=dict(color='blue', width=2)
+        ))
+        
+        fig2.add_trace(go.Scatter(
+            x=portfolio_df['Date'],
+            y=portfolio_df['Buy_Hold_Value'],
+            mode='lines',
+            name='買入持有策略',
+            line=dict(color='gray', width=2, dash='dash')
+        ))
+        
+        fig2.update_layout(
+            title="策略表現比較",
+            xaxis_title="日期",
+            yaxis_title="投資組合價值 (TWD)",
+            hovermode='x unified'
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # 策略比較表
+        st.subheader("📋 策略比較")
+        
+        comparison_data = {
+            "策略": [strategy_name, "買入持有策略"],
+            "總報酬率 (%)": [f"{total_return:.2f}%", f"{buy_hold_return:.2f}%"],
+            "最終資金": [f"${backtest_result['final_capital']:,.0f}", f"${buy_hold_final:,.0f}"],
+            "超額報酬": [f"{total_return - buy_hold_return:.2f}%", "0.00%"]
+        }
+        
+        # 如果是突破策略，添加風險參數資訊
+        if strategy_name == "突破策略" and stop_loss_pct and take_profit_pct:
+            st.info(f"🎯 策略參數: 停損 -{stop_loss_pct}% | 停利 +{take_profit_pct}%")
+        
+        st.dataframe(pd.DataFrame(comparison_data), use_container_width=True)
+    
+    # 交易記錄
+    if backtest_result['trades']:
+        st.subheader("📝 交易記錄")
+        trades_df = pd.DataFrame(backtest_result['trades'])
+        
+        # 格式化交易記錄表格
+        if 'Return' in trades_df.columns:
+            trades_df['Return'] = trades_df['Return'].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "-")
+        if 'Price' in trades_df.columns:
+            trades_df['Price'] = trades_df['Price'].apply(lambda x: f"{x:.2f}")
+        if 'Capital' in trades_df.columns:
+            trades_df['Capital'] = trades_df['Capital'].apply(lambda x: f"{x:,.0f}")
+        
+        st.dataframe(trades_df, use_container_width=True)
+        
+        # 交易統計
+        if len(trades_df) > 1:
+            st.subheader("📊 交易統計")
+            
+            # 計算勝率
+            if 'Return' in backtest_result['trades'][0]:
+                returns = [trade.get('Return', 0) for trade in backtest_result['trades'] if trade.get('Return') is not None]
+                if returns:
+                    win_trades = len([r for r in returns if r > 0])
+                    total_trades = len(returns)
+                    win_rate = (win_trades / total_trades * 100) if total_trades > 0 else 0
+                    
+                    avg_return = sum(returns) / len(returns) if returns else 0
+                    max_return = max(returns) if returns else 0
+                    min_return = min(returns) if returns else 0
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("勝率", f"{win_rate:.1f}%")
+                    with col2:
+                        st.metric("平均報酬", f"{avg_return:.2f}%")
+                    with col3:
+                        st.metric("最大獲利", f"{max_return:.2f}%")
+                    with col4:
+                        st.metric("最大虧損", f"{min_return:.2f}%")
 
 def show_individual_backtest(stock_data):
     """個股回測分頁"""
@@ -736,8 +888,173 @@ def show_individual_backtest(stock_data):
             st.plotly_chart(fig, use_container_width=True)
             
             # 策略設定
-            st.subheader("🎯 布林通道策略設定")
+            st.subheader("🎯 交易策略選擇")
             
+            # 策略選擇
+            strategy_choice = st.radio(
+                "選擇回測策略:",
+                ["📊 布林通道策略", "🚀 突破策略"],
+                horizontal=True,
+                help="選擇要使用的交易策略"
+            )
+            
+            if strategy_choice == "📊 布林通道策略":
+                # 布林通道策略設定
+                st.markdown("### 📊 布林通道策略參數")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    bb_window = st.number_input(
+                        "移動平均週期", 
+                        min_value=5, 
+                        max_value=50, 
+                        value=20,
+                        help="計算移動平均線的天數"
+                    )
+                with col2:
+                    bb_std = st.number_input(
+                        "標準差倍數", 
+                        min_value=1.0, 
+                        max_value=3.0, 
+                        value=2.0, 
+                        step=0.1,
+                        help="布林通道寬度的標準差倍數"
+                    )
+                with col3:
+                    initial_capital = st.number_input(
+                        "初始資金", 
+                        min_value=10000, 
+                        max_value=10000000, 
+                        value=100000, 
+                        step=10000,
+                        help="回測的初始投資金額"
+                    )
+                
+                # 策略說明
+                with st.expander("📖 布林通道策略說明", expanded=False):
+                    st.markdown(f"""
+                    **布林通道策略原理:**
+                    
+                    1. **指標計算:**
+                       - 中軌: {bb_window}日移動平均線
+                       - 上軌: 中軌 + {bb_std}倍標準差
+                       - 下軌: 中軌 - {bb_std}倍標準差
+                    
+                    2. **交易信號:**
+                       - **買入信號**: 股價觸及下軌後反彈
+                       - **賣出信號**: 股價觸及上軌
+                    
+                    3. **策略邏輯:**
+                       - 當股價跌至下軌時，認為超賣，等待反彈買入
+                       - 當股價漲至上軌時，認為超買，賣出獲利
+                       - 利用股價在通道內震盪的特性進行交易
+                    """)
+                
+                # 執行回測
+                if st.button("🚀 執行布林通道策略回測", type="primary"):
+                    with st.spinner("正在執行策略回測..."):
+                        backtest_result = bollinger_strategy_backtest(
+                            price_data.copy(), 
+                            initial_capital=initial_capital
+                        )
+                    
+                    if backtest_result:
+                        # 顯示回測結果的代碼保持不變
+                        show_backtest_results_ui(backtest_result, stock_code, stock_name, "布林通道策略", initial_capital)
+                    else:
+                        st.error("❌ 策略回測失敗，數據可能不足或存在問題")
+            
+            elif strategy_choice == "🚀 突破策略":
+                # 突破策略設定
+                st.markdown("### 🚀 突破策略參數")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    stop_loss_pct = st.number_input(
+                        "停損百分比 (%)", 
+                        min_value=1.0, 
+                        max_value=20.0, 
+                        value=6.0,
+                        step=0.5,
+                        help="跌破進場價多少%時停損"
+                    )
+                with col2:
+                    take_profit_pct = st.number_input(
+                        "停利百分比 (%)", 
+                        min_value=5.0, 
+                        max_value=50.0, 
+                        value=15.0, 
+                        step=1.0,
+                        help="達到多少%獲利時停利"
+                    )
+                with col3:
+                    initial_capital = st.number_input(
+                        "初始資金", 
+                        min_value=10000, 
+                        max_value=10000000, 
+                        value=100000, 
+                        step=10000,
+                        help="回測的初始投資金額",
+                        key="breakout_capital"
+                    )
+                
+                # 策略說明
+                with st.expander("📖 突破策略說明", expanded=False):
+                    st.markdown(f"""
+                    **突破策略原理 (順勢+突破型):**
+                    
+                    **1️⃣ 進場條件 (三個條件須同時滿足):**
+                    - 🔸 **趨勢判斷**: 股價站上 20日與60日均線
+                    - 🔸 **突破進場**: 當天收盤價 > 最近 20日高點
+                    - 🔸 **成交量過濾**: 進場日成交量 > 前 5 日平均量 (代表主力參與)
+                    
+                    **2️⃣ 出場條件 (滿足任一條件即出場):**
+                    - 🔴 **停損**: 收盤價跌破進場價 -{stop_loss_pct:.1f}% 即隔天出場
+                    - 🟢 **停利**: 達到 +{take_profit_pct:.1f}% 報酬即獲利了結
+                    - 🟡 **追蹤出場**: 跌破 10 日均線可分批減碼或出清
+                    
+                    **3️⃣ 策略特色:**
+                    - 🎯 順勢操作，跟隨趨勢方向
+                    - 📈 突破創新高時進場，捕捉強勢股
+                    - 💪 量價配合，確保主力參與
+                    - 🛡️ 明確的風險控制機制
+                    """)
+                
+                # 執行回測
+                if st.button("🚀 執行突破策略回測", type="primary"):
+                    with st.spinner("正在執行策略回測..."):
+                        backtest_result = breakout_strategy_backtest(
+                            price_data.copy(), 
+                            initial_capital=initial_capital,
+                            stop_loss_pct=stop_loss_pct,
+                            take_profit_pct=take_profit_pct
+                        )
+                    
+                    if backtest_result:
+                        # 顯示回測結果
+                        show_backtest_results_ui(backtest_result, stock_code, stock_name, "突破策略", initial_capital, stop_loss_pct, take_profit_pct)
+                    else:
+                        st.error("❌ 策略回測失敗，數據可能不足或存在問題")
+
+def show_batch_backtest(stock_data):
+    """批量回測分頁"""
+    st.subheader("🎯 多策略批量回測結果")
+    
+    # 檢查是否有回測結果文件
+    result_files = glob.glob('backtest_results_*.csv') + glob.glob('multi_strategy_backtest_*.csv')
+    
+    if not result_files:
+        st.info("💡 尚未執行批量回測，請先執行批量回測來生成結果")
+        
+        # 提供執行批量回測的選項
+        st.markdown("### 🚀 執行批量回測")
+        
+        # 策略選擇
+        strategy_type = st.radio(
+            "選擇回測模式:",
+            ["📊 單一策略 (布林通道)", "🎯 多策略比較 (布林通道 + 突破策略)"],
+            horizontal=True
+        )
+        
+        if strategy_type == "📊 單一策略 (布林通道)":
             col1, col2, col3 = st.columns(3)
             with col1:
                 bb_window = st.number_input(
@@ -745,7 +1062,7 @@ def show_individual_backtest(stock_data):
                     min_value=5, 
                     max_value=50, 
                     value=20,
-                    help="計算移動平均線的天數"
+                    key="batch_bb_window"
                 )
             with col2:
                 bb_std = st.number_input(
@@ -754,276 +1071,97 @@ def show_individual_backtest(stock_data):
                     max_value=3.0, 
                     value=2.0, 
                     step=0.1,
-                    help="布林通道寬度的標準差倍數"
+                    key="batch_bb_std"
                 )
             with col3:
                 initial_capital = st.number_input(
                     "初始資金", 
                     min_value=10000, 
-                    max_value=10000000, 
+                    max_value=1000000, 
                     value=100000, 
                     step=10000,
-                    help="回測的初始投資金額"
+                    key="batch_initial_capital"
                 )
             
-            # 策略說明
-            with st.expander("📖 布林通道策略說明", expanded=False):
+            # 顯示批量回測腳本信息
+            with st.expander("📖 布林通道批量回測說明", expanded=True):
                 st.markdown("""
-                **布林通道策略原理:**
+                **布林通道批量回測功能:**
                 
-                1. **指標計算:**
-                   - 中軌: {window}日移動平均線
-                   - 上軌: 中軌 + {std}倍標準差
-                   - 下軌: 中軌 - {std}倍標準差
+                1. **覆蓋範圍**: 對所有可用股票執行布林通道策略回測
+                2. **篩選條件**: 自動篩選出報酬率≥10%的優質股票
+                3. **結果輸出**: 生成詳細的CSV結果文件和分析報告
+                4. **執行方式**: 需要在命令行執行批量回測腳本
                 
-                2. **交易信號:**
-                   - **買入信號**: 股價觸及下軌後反彈
-                   - **賣出信號**: 股價觸及上軌
+                **執行步驟:**
+                ```bash
+                python batch_backtest.py
+                ```
                 
-                3. **策略邏輯:**
-                   - 當股價跌至下軌時，認為超賣，等待反彈買入
-                   - 當股價漲至上軌時，認為超買，賣出獲利
-                   - 利用股價在通道內震盪的特性進行交易
-                """.format(window=bb_window, std=bb_std))
-            
-            # 執行回測
-            if st.button("🚀 執行布林通道策略回測", type="primary"):
-                with st.spinner("正在執行策略回測..."):
-                    backtest_result = bollinger_strategy_backtest(
-                        price_data.copy(), 
-                        initial_capital=initial_capital
-                    )
+                **預期結果:**
+                - 完整回測結果文件 (所有股票)
+                - 篩選結果文件 (報酬率≥10%的股票)
+                - 詳細分析報告
+                """)
                 
-                if backtest_result:
-                    # 顯示回測結果
-                    st.subheader("📊 回測結果")
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric(
-                            "初始資金",
-                            f"${initial_capital:,.0f}",
-                        )
-                    
-                    with col2:
-                        st.metric(
-                            "最終資金",
-                            f"${backtest_result['final_capital']:,.0f}",
-                        )
-                    
-                    with col3:
-                        total_return = backtest_result['total_return']
-                        st.metric(
-                            "總報酬率",
-                            f"{total_return:.2f}%",
-                            delta=f"{total_return:.2f}%"
-                        )
-                    
-                    with col4:
-                        num_trades = len(backtest_result['trades'])
-                        st.metric(
-                            "交易次數",
-                            f"{num_trades} 次"
-                        )
-                    
-                    # 策略表現圖表
-                    st.subheader("📈 策略表現與布林通道")
-                    
-                    df_with_indicators = backtest_result['df_with_indicators']
-                    
-                    fig = go.Figure()
-                    
-                    # 股價線
-                    fig.add_trace(go.Scatter(
-                        x=df_with_indicators['Date'],
-                        y=df_with_indicators['Close'],
-                        mode='lines',
-                        name='收盤價',
-                        line=dict(color='black', width=2)
-                    ))
-                    
-                    # 布林通道
-                    fig.add_trace(go.Scatter(
-                        x=df_with_indicators['Date'],
-                        y=df_with_indicators['Upper_Band'],
-                        mode='lines',
-                        name='上軌',
-                        line=dict(color='red', width=1, dash='dash')
-                    ))
-                    
-                    fig.add_trace(go.Scatter(
-                        x=df_with_indicators['Date'],
-                        y=df_with_indicators['MA'],
-                        mode='lines',
-                        name='中軌(MA)',
-                        line=dict(color='blue', width=1)
-                    ))
-                    
-                    fig.add_trace(go.Scatter(
-                        x=df_with_indicators['Date'],
-                        y=df_with_indicators['Lower_Band'],
-                        mode='lines',
-                        name='下軌',
-                        line=dict(color='green', width=1, dash='dash')
-                    ))
-                    
-                    # 標記買賣點
-                    trades_df = pd.DataFrame(backtest_result['trades'])
-                    if not trades_df.empty:
-                        buy_trades = trades_df[trades_df['Action'] == 'BUY']
-                        sell_trades = trades_df[trades_df['Action'].str.contains('SELL')]
-                        
-                        if not buy_trades.empty:
-                            fig.add_trace(go.Scatter(
-                                x=buy_trades['Date'],
-                                y=buy_trades['Price'],
-                                mode='markers',
-                                name='買入',
-                                marker=dict(color='green', size=10, symbol='triangle-up')
-                            ))
-                        
-                        if not sell_trades.empty:
-                            fig.add_trace(go.Scatter(
-                                x=sell_trades['Date'],
-                                y=sell_trades['Price'],
-                                mode='markers',
-                                name='賣出',
-                                marker=dict(color='red', size=10, symbol='triangle-down')
-                            ))
-                    
-                    fig.update_layout(
-                        title=f"{stock_code} - {stock_name} 布林通道策略回測",
-                        xaxis_title="日期",
-                        yaxis_title="股價 (TWD)",
-                        hovermode='x unified',
-                        height=600
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 投資組合價值曲線
-                    if not backtest_result['portfolio_values'].empty:
-                        st.subheader("💰 投資組合價值變化")
-                        
-                        portfolio_df = backtest_result['portfolio_values']
-                        
-                        # 計算買入持有策略比較
-                        first_price = portfolio_df.iloc[0]['Stock_Price']
-                        last_price = portfolio_df.iloc[-1]['Stock_Price']
-                        buy_hold_return = (last_price - first_price) / first_price * 100
-                        buy_hold_final = initial_capital * (1 + buy_hold_return / 100)
-                        
-                        portfolio_df['Buy_Hold_Value'] = initial_capital * (portfolio_df['Stock_Price'] / first_price)
-                        
-                        fig2 = go.Figure()
-                        
-                        fig2.add_trace(go.Scatter(
-                            x=portfolio_df['Date'],
-                            y=portfolio_df['Portfolio_Value'],
-                            mode='lines',
-                            name='布林通道策略',
-                            line=dict(color='blue', width=2)
-                        ))
-                        
-                        fig2.add_trace(go.Scatter(
-                            x=portfolio_df['Date'],
-                            y=portfolio_df['Buy_Hold_Value'],
-                            mode='lines',
-                            name='買入持有策略',
-                            line=dict(color='gray', width=2, dash='dash')
-                        ))
-                        
-                        fig2.update_layout(
-                            title="策略表現比較",
-                            xaxis_title="日期",
-                            yaxis_title="投資組合價值 (TWD)",
-                            hovermode='x unified'
-                        )
-                        
-                        st.plotly_chart(fig2, use_container_width=True)
-                        
-                        # 策略比較表
-                        st.subheader("📋 策略比較")
-                        
-                        comparison_data = {
-                            "策略": ["布林通道策略", "買入持有策略"],
-                            "總報酬率 (%)": [f"{total_return:.2f}%", f"{buy_hold_return:.2f}%"],
-                            "最終資金": [f"${backtest_result['final_capital']:,.0f}", f"${buy_hold_final:,.0f}"],
-                            "超額報酬": [f"{total_return - buy_hold_return:.2f}%", "0.00%"]
-                        }
-                        
-                        st.dataframe(pd.DataFrame(comparison_data), use_container_width=True)
-                    
-                    # 交易記錄
-                    if backtest_result['trades']:
-                        st.subheader("📝 交易記錄")
-                        trades_df = pd.DataFrame(backtest_result['trades'])
-                        st.dataframe(trades_df, use_container_width=True)
-
-def show_batch_backtest(stock_data):
-    """批量回測分頁"""
-    st.subheader("🎯 批量布林通道策略回測")
-    
-    # 檢查是否有回測結果文件
-    result_files = glob.glob('backtest_results_*.csv')
-    
-    if not result_files:
-        st.info("💡 尚未執行批量回測，請先執行批量回測來生成結果")
-        
-        # 提供執行批量回測的選項
-        st.markdown("### 🚀 執行批量回測")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            bb_window = st.number_input(
-                "移動平均週期", 
-                min_value=5, 
-                max_value=50, 
-                value=20,
-                key="batch_bb_window"
-            )
-        with col2:
-            bb_std = st.number_input(
-                "標準差倍數", 
-                min_value=1.0, 
-                max_value=3.0, 
-                value=2.0, 
-                step=0.1,
-                key="batch_bb_std"
-            )
-        with col3:
-            initial_capital = st.number_input(
-                "初始資金", 
-                min_value=10000, 
-                max_value=1000000, 
-                value=100000, 
-                step=10000,
-                key="batch_initial_capital"
-            )
-        
-        # 顯示批量回測腳本信息
-        with st.expander("📖 批量回測說明", expanded=True):
-            st.markdown("""
-            **批量回測功能:**
+        else:  # 多策略比較
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                stop_loss_pct = st.number_input(
+                    "突破策略停損 (%)", 
+                    min_value=1.0, 
+                    max_value=20.0, 
+                    value=6.0,
+                    step=0.5,
+                    key="multi_stop_loss"
+                )
+            with col2:
+                take_profit_pct = st.number_input(
+                    "突破策略停利 (%)", 
+                    min_value=5.0, 
+                    max_value=50.0, 
+                    value=15.0, 
+                    step=1.0,
+                    key="multi_take_profit"
+                )
+            with col3:
+                initial_capital = st.number_input(
+                    "初始資金", 
+                    min_value=10000, 
+                    max_value=1000000, 
+                    value=100000, 
+                    step=10000,
+                    key="multi_initial_capital"
+                )
             
-            1. **覆蓋範圍**: 對所有可用股票執行布林通道策略回測
-            2. **篩選條件**: 自動篩選出報酬率≥10%的優質股票
-            3. **結果輸出**: 生成詳細的CSV結果文件和分析報告
-            4. **執行方式**: 需要在命令行執行批量回測腳本
-            
-            **執行步驟:**
-            ```bash
-            python batch_backtest.py
-            ```
-            
-            **預期結果:**
-            - 完整回測結果文件 (所有股票)
-            - 篩選結果文件 (報酬率≥10%的股票)
-            - 詳細分析報告
-            """)
+            # 多策略回測說明
+            with st.expander("📖 多策略批量回測說明", expanded=True):
+                st.markdown(f"""
+                **多策略批量回測功能:**
+                
+                1. **同時測試兩種策略**:
+                   - 📊 **布林通道策略**: 利用超買超賣信號
+                   - 🚀 **突破策略**: 趨勢跟隨 + 量價配合 (停損{stop_loss_pct}%, 停利{take_profit_pct}%)
+                
+                2. **比較分析**:
+                   - 各策略的成功率比較
+                   - 平均報酬率對比
+                   - 勝率和風險分析
+                   - 適合股票類型分析
+                
+                3. **執行方式**:
+                ```bash
+                python multi_strategy_batch_backtest.py
+                ```
+                
+                **預期結果:**
+                - 包含兩種策略的完整回測結果
+                - 策略表現比較分析
+                - 各策略的優質股票推薦
+                - 詳細統計數據 (勝率、平均報酬等)
+                """)
         
-        st.warning("⚠️ 請在命令行中執行 `python batch_backtest.py` 來生成批量回測結果")
+        st.warning("⚠️ 請在命令行中執行相應的批量回測腳本來生成結果")
         
         return
     
@@ -1037,599 +1175,83 @@ def show_batch_backtest(stock_data):
         
         st.success(f"✅ 載入批量回測結果: {os.path.basename(latest_full_file)}")
         
+        # 檢測是否為多策略結果
+        is_multi_strategy = '策略' in full_results.columns
+        
+        if is_multi_strategy:
+            st.info("🎯 檢測到多策略回測結果，將顯示策略比較分析")
+            
+            # 策略比較分析
+            st.subheader("🔄 策略表現比較")
+            
+            strategies = full_results['策略'].unique()
+            strategy_stats = []
+            
+            for strategy in strategies:
+                strategy_data = full_results[full_results['策略'] == strategy]
+                profitable_count = len(strategy_data[strategy_data['總報酬率(%)'] >= 10])
+                
+                stats = {
+                    '策略': strategy,
+                    '測試股票數': len(strategy_data),
+                    '優質股票數': profitable_count,
+                    '成功率': f"{profitable_count/len(strategy_data)*100:.1f}%",
+                    '平均報酬率': f"{strategy_data['總報酬率(%)'].mean():.2f}%",
+                    '最高報酬率': f"{strategy_data['總報酬率(%)'].max():.2f}%",
+                    '平均勝率': f"{strategy_data['勝率(%)'].mean():.1f}%" if '勝率(%)' in strategy_data.columns else "N/A",
+                    '平均交易次數': f"{strategy_data['交易次數'].mean():.1f}" if '交易次數' in strategy_data.columns else "N/A"
+                }
+                strategy_stats.append(stats)
+            
+            strategy_comparison_df = pd.DataFrame(strategy_stats)
+            st.dataframe(strategy_comparison_df, use_container_width=True)
+            
+            # 策略選擇器來篩選顯示
+            st.subheader("📊 分策略分析")
+            
+            selected_strategy = st.selectbox(
+                "選擇要分析的策略:",
+                ["全部策略"] + list(strategies),
+                help="選擇特定策略來查看詳細結果"
+            )
+            
+            if selected_strategy != "全部策略":
+                display_results = full_results[full_results['策略'] == selected_strategy].copy()
+                profitable_results = display_results[display_results['總報酬率(%)'] >= 10].copy() if len(display_results) > 0 else None
+                st.info(f"📈 當前顯示: {selected_strategy} 的回測結果")
+            else:
+                display_results = full_results
+        else:
+            display_results = full_results
+        
         # 顯示總體統計
         st.subheader("📊 回測統計總覽")
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("總回測股票", len(full_results))
+            if is_multi_strategy and selected_strategy != "全部策略":
+                st.metric("當前策略測試股票", len(display_results))
+            else:
+                unique_stocks = len(display_results['股票代碼'].unique()) if '股票代碼' in display_results.columns else len(display_results)
+                st.metric("總回測股票", unique_stocks)
         
         with col2:
-            profitable_count = len(profitable_results) if profitable_results is not None else len(full_results[full_results['總報酬率(%)'] >= 10])
+            if profitable_results is not None:
+                profitable_count = len(profitable_results)
+            else:
+                profitable_count = len(display_results[display_results['總報酬率(%)'] >= 10])
             st.metric("優質股票 (≥10%)", profitable_count)
         
         with col3:
-            avg_return = full_results['總報酬率(%)'].mean()
+            avg_return = display_results['總報酬率(%)'].mean()
             st.metric("平均報酬率", f"{avg_return:.2f}%")
         
         with col4:
-            max_return = full_results['總報酬率(%)'].max()
+            max_return = display_results['總報酬率(%)'].max()
             st.metric("最高報酬率", f"{max_return:.2f}%")
         
         # 分類顯示結果
-        st.subheader("🏆 優質股票分析")
-        
-        # 使用優質股票結果或從完整結果中篩選
-        display_results = profitable_results if profitable_results is not None else full_results[full_results['總報酬率(%)'] >= 10].copy()
-        
-        if len(display_results) > 0:
-            # 按報酬率分類
-            超高報酬 = display_results[display_results['總報酬率(%)'] >= 50]
-            高報酬 = display_results[(display_results['總報酬率(%)'] >= 20) & (display_results['總報酬率(%)'] < 50)]
-            中等報酬 = display_results[(display_results['總報酬率(%)'] >= 10) & (display_results['總報酬率(%)'] < 20)]
-            
-            # 分頁顯示
-            tab1, tab2, tab3, tab4 = st.tabs(["🚀 超高報酬 (≥50%)", "📈 高報酬 (20-50%)", "💰 中等報酬 (10-20%)", "📋 完整列表"])
-            
-            with tab1:
-                if len(超高報酬) > 0:
-                    st.markdown(f"**找到 {len(超高報酬)} 支超高報酬股票:**")
-                    display_df = 超高報酬.sort_values('總報酬率(%)', ascending=False)
-                    st.dataframe(display_df, use_container_width=True)
-                else:
-                    st.info("📊 沒有報酬率≥50%的股票")
-            
-            with tab2:
-                if len(高報酬) > 0:
-                    st.markdown(f"**找到 {len(高報酬)} 支高報酬股票:**")
-                    display_df = 高報酬.sort_values('總報酬率(%)', ascending=False)
-                    st.dataframe(display_df, use_container_width=True)
-                else:
-                    st.info("📊 沒有報酬率在20-50%的股票")
-            
-            with tab3:
-                if len(中等報酬) > 0:
-                    st.markdown(f"**找到 {len(中等報酬)} 支中等報酬股票:**")
-                    display_df = 中等報酬.sort_values('總報酬率(%)', ascending=False)
-                    st.dataframe(display_df, use_container_width=True)
-                else:
-                    st.info("📊 沒有報酬率在10-20%的股票")
-            
-            with tab4:
-                st.markdown(f"**所有優質股票 ({len(display_results)} 支):**")
-                display_df = display_results.sort_values('總報酬率(%)', ascending=False)
-                st.dataframe(display_df, use_container_width=True)
-        
-        else:
-            st.warning("⚠️ 沒有找到報酬率≥10%的股票")
-        
-        # 報酬率分布圖
-        st.subheader("📊 報酬率分布分析")
-        
-        fig = px.histogram(
-            full_results, 
-            x='總報酬率(%)', 
-            nbins=30,
-            title="所有股票報酬率分布",
-            labels={'總報酬率(%)': '報酬率 (%)', 'count': '股票數量'}
-        )
-        fig.add_vline(x=10, line_dash="dash", line_color="red", annotation_text="10%門檻")
-        fig.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="損益平衡")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 投資建議
-        st.subheader("💡 投資建議")
-        
-        if len(display_results) >= 10:
-            top_10 = display_results.head(10)
-            
-            st.markdown("### 🎯 推薦投資組合 (前10名)")
-            recommendation_df = top_10[['股票代碼', '總報酬率(%)', '最終資金', '交易次數']].copy()
-            st.dataframe(recommendation_df, use_container_width=True)
-            
-            avg_top10_return = top_10['總報酬率(%)'].mean()
-            st.info(f"💰 前10名平均報酬率: {avg_top10_return:.2f}%")
-            
-        # 風險提醒
-        st.markdown("### ⚠️ 風險提醒")
-        st.warning("""
-        - 過去績效不代表未來表現
-        - 建議分散投資，單一股票配置不超過總資金的5%
-        - 設定停損點，建議15-20%
-        - 定期檢視和調整投資組合
-        """)
-        
-        # 下載功能
-        st.subheader("📥 下載結果")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.download_button(
-                label="📊 下載完整回測結果",
-                data=full_results.to_csv(index=False, encoding='utf-8-sig'),
-                file_name=f"完整回測結果_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            ):
-                st.success("✅ 下載完成")
-        
-        with col2:
-            if profitable_results is not None and len(profitable_results) > 0:
-                if st.download_button(
-                    label="🏆 下載優質股票結果",
-                    data=profitable_results.to_csv(index=False, encoding='utf-8-sig'),
-                    file_name=f"優質股票結果_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                ):
-                    st.success("✅ 下載完成")
-    
-    except Exception as e:
-        st.error(f"❌ 載入回測結果失敗: {str(e)}")
-        st.info("💡 請確保回測結果文件格式正確")
-
-def show_portfolio_analysis(stock_data):
-    """投資組合分析頁面"""
-    st.markdown('<div class="page-header">📈 投資組合分析</div>', unsafe_allow_html=True)
-    st.info("🚧 此功能正在開發中，敬請期待！")
-    
-    if stock_data is not None:
-        st.subheader("📊 可用於組合分析的股票數量")
-        st.metric("股票總數", len(stock_data))
-
-def show_backtest_results():
-    """批量回測結果頁面"""
-    st.markdown('<div class="page-header">🎯 布林通道策略批量回測結果</div>', unsafe_allow_html=True)
-    
-    # 載入回測結果
-    @st.cache_data
-    def load_backtest_results():
-        """載入最新的回測結果"""
-        try:
-            # 尋找最新的結果文件
-            full_files = glob.glob('backtest_results_full_*.csv')
-            profitable_files = glob.glob('backtest_results_profitable_*.csv')
-            
-            if not full_files:
-                return None, None, "找不到回測結果文件"
-            
-            # 選擇最新的文件
-            latest_full = max(full_files, key=os.path.getctime)
-            latest_profitable = max(profitable_files, key=os.path.getctime) if profitable_files else None
-            
-            full_df = pd.read_csv(latest_full)
-            profitable_df = pd.read_csv(latest_profitable) if latest_profitable else pd.DataFrame()
-            
-            return full_df, profitable_df, None
-            
-        except Exception as e:
-            return None, None, f"載入回測結果失敗: {str(e)}"
-    
-    full_df, profitable_df, error = load_backtest_results()
-    
-    if error:
-        st.error(f"❌ {error}")
-        st.info("💡 請先運行批量回測腳本生成結果")
-        st.code("python batch_backtest.py", language="bash")
-        return
-    
-    # 回測概況
-    st.subheader("📊 回測概況")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "回測股票數",
-            f"{len(full_df):,}",
-            help="總共回測的股票數量"
-        )
-    
-    with col2:
-        avg_return = full_df['total_return'].mean()
-        st.metric(
-            "平均報酬率",
-            f"{avg_return:.2f}%",
-            delta=f"{'📈' if avg_return > 0 else '📉'}",
-            help="所有股票的平均報酬率"
-        )
-    
-    with col3:
-        win_rate = len(full_df[full_df['total_return'] > 0]) / len(full_df) * 100
-        st.metric(
-            "勝率",
-            f"{win_rate:.1f}%",
-            delta=f"{'🎯' if win_rate > 50 else '⚠️'}",
-            help="正報酬股票的比例"
-        )
-    
-    with col4:
-        st.metric(
-            "優質股票數",
-            f"{len(profitable_df):,}",
-            delta=f"{len(profitable_df)/len(full_df)*100:.1f}%",
-            help="報酬率≥10%的股票數量"
-        )
-    
-    # 統計分析
-    st.subheader("📈 統計分析")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### 📊 報酬率統計")
-        stats_data = {
-            "統計指標": ["最高報酬率", "最低報酬率", "標準差", "中位數", "25%分位數", "75%分位數"],
-            "數值": [
-                f"{full_df['total_return'].max():.2f}%",
-                f"{full_df['total_return'].min():.2f}%",
-                f"{full_df['total_return'].std():.2f}%",
-                f"{full_df['total_return'].median():.2f}%",
-                f"{full_df['total_return'].quantile(0.25):.2f}%",
-                f"{full_df['total_return'].quantile(0.75):.2f}%"
-            ]
-        }
-        st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
-    
-    with col2:
-        st.markdown("### 🎯 報酬率分布")
-        bins = [-100, -50, -20, -10, 0, 10, 20, 50, 100, float('inf')]
-        labels = ['<-50%', '-50~-20%', '-20~-10%', '-10~0%', '0~10%', '10~20%', '20~50%', '50~100%', '>100%']
-        
-        distribution_data = []
-        for i, label in enumerate(labels):
-            if i < len(bins) - 1:
-                count = len(full_df[(full_df['total_return'] >= bins[i]) & 
-                                   (full_df['total_return'] < bins[i+1])])
-                percentage = count / len(full_df) * 100
-                distribution_data.append({
-                    "區間": label,
-                    "股票數": count,
-                    "比例": f"{percentage:.1f}%"
-                })
-        
-        st.dataframe(pd.DataFrame(distribution_data), use_container_width=True, hide_index=True)
-    
-    # 優質股票清單
-    if len(profitable_df) > 0:
-        st.subheader("🏆 優質股票清單 (報酬率 ≥ 10%)")
-        
-        # 分類顯示
-        tab1, tab2, tab3, tab4 = st.tabs(["🥇 超高報酬 (>50%)", "🥈 高報酬 (30-50%)", "🥉 中等報酬 (20-30%)", "📊 穩健報酬 (10-20%)"])
-        
-        with tab1:
-            super_high = profitable_df[profitable_df['total_return'] > 50]
-            if len(super_high) > 0:
-                st.markdown(f"**共 {len(super_high)} 支股票**")
-                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
-                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
-                super_high_display = super_high[display_cols].copy()
-                super_high_display.columns = col_names
-                super_high_display['最終資金'] = super_high_display['最終資金'].apply(lambda x: f"${x:,.0f}")
-                st.dataframe(super_high_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("沒有股票達到超高報酬率標準")
-        
-        with tab2:
-            high_return = profitable_df[(profitable_df['total_return'] >= 30) & (profitable_df['total_return'] <= 50)]
-            if len(high_return) > 0:
-                st.markdown(f"**共 {len(high_return)} 支股票**")
-                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
-                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
-                high_return_display = high_return[display_cols].copy()
-                high_return_display.columns = col_names
-                high_return_display['最終資金'] = high_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
-                st.dataframe(high_return_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("沒有股票在此報酬率區間")
-        
-        with tab3:
-            medium_return = profitable_df[(profitable_df['total_return'] >= 20) & (profitable_df['total_return'] < 30)]
-            if len(medium_return) > 0:
-                st.markdown(f"**共 {len(medium_return)} 支股票**")
-                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
-                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
-                medium_return_display = medium_return[display_cols].copy()
-                medium_return_display.columns = col_names
-                medium_return_display['最終資金'] = medium_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
-                st.dataframe(medium_return_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("沒有股票在此報酬率區間")
-        
-        with tab4:
-            stable_return = profitable_df[(profitable_df['total_return'] >= 10) & (profitable_df['total_return'] < 20)]
-            if len(stable_return) > 0:
-                st.markdown(f"**共 {len(stable_return)} 支股票**")
-                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
-                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
-                stable_return_display = stable_return[display_cols].copy()
-                stable_return_display.columns = col_names
-                stable_return_display['最終資金'] = stable_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
-                st.dataframe(stable_return_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("沒有股票在此報酬率區間")
-        
-        # 推薦股票池
-        st.subheader("🎯 推薦股票池 (前20名)")
-        
-        top_20 = profitable_df.head(20)
-        display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
-        col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
-        top_20_display = top_20[display_cols].copy()
-        top_20_display.columns = col_names
-        top_20_display['最終資金'] = top_20_display['最終資金'].apply(lambda x: f"${x:,.0f}")
-        
-        # 添加排名
-        top_20_display.insert(0, '排名', range(1, len(top_20_display) + 1))
-        
-        st.dataframe(top_20_display, use_container_width=True, hide_index=True)
-    
-    # 策略評估
-    st.subheader("🎯 策略評估")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### ✅ 優點")
-        advantages = []
-        
-        if len(profitable_df) > 0:
-            advantages.append(f"• 有 **{len(profitable_df)} 支股票** 達到10%以上報酬率")
-            advantages.append(f"• 最高報酬率達到 **{full_df['total_return'].max():.2f}%**")
-            advantages.append(f"• 優質股票平均報酬率為 **{profitable_df['total_return'].mean():.2f}%**")
-        
-        if win_rate > 45:
-            advantages.append(f"• 勝率達到 **{win_rate:.1f}%**，接近或超過50%")
-        
-        advantages.append("• 交易頻率適中，不會過度頻繁")
-        
-        for advantage in advantages:
-            st.markdown(advantage)
-    
-    with col2:
-        st.markdown("### ⚠️ 風險提醒")
-        risks = [
-            f"• 最大虧損達到 **{full_df['total_return'].min():.2f}%**",
-            f"• 報酬率標準差為 **{full_df['total_return'].std():.2f}%**，波動較大",
-            f"• 有 **{len(full_df[full_df['total_return'] < -20])} 支股票** 虧損超過20%",
-            "• 過去績效不代表未來表現",
-            "• 實際交易需考慮手續費和滑價成本"
-        ]
-        
-        for risk in risks:
-            st.markdown(risk)
-    
-    # 投資建議
-    st.subheader("💡 投資建議")
-    
-    st.markdown("""
-    <div style="background-color: #d4edda; padding: 15px; border-radius: 10px; border-left: 5px solid #28a745;">
-    <h4>🛡️ 風險管理建議</h4>
-    <ul>
-        <li><strong>停損設定</strong>: 建議設定15-20%的停損點</li>
-        <li><strong>資金分配</strong>: 單一股票不超過總資金的5%</li>
-        <li><strong>分散投資</strong>: 選擇5-10支不同產業的優質股票</li>
-        <li><strong>定期檢視</strong>: 每月檢視策略表現並調整</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107;">
-    <h4>🔧 策略優化建議</h4>
-    <ul>
-        <li><strong>參數調整</strong>: 可測試不同的移動平均期間和標準差倍數</li>
-        <li><strong>基本面篩選</strong>: 結合ROE、EPS等財務指標預先篩選</li>
-        <li><strong>市場環境</strong>: 考慮牛熊市環境調整策略</li>
-        <li><strong>成本考量</strong>: 加入手續費和滑價成本的真實回測</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # 下載結果
-    st.subheader("📥 下載結果")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if len(profitable_df) > 0:
-            csv_data = profitable_df.to_csv(index=False)
-            st.download_button(
-                label="📥 下載優質股票清單 (CSV)",
-                data=csv_data,
-                file_name=f"profitable_stocks_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                help="下載報酬率≥10%的股票清單"
-            )
-    
-    with col2:
-        # 檢查是否有分析報告
-        report_files = glob.glob('backtest_analysis_report_*.md')
-        if report_files:
-            latest_report = max(report_files, key=os.path.getctime)
-            try:
-                with open(latest_report, 'r', encoding='utf-8') as f:
-                    report_content = f.read()
-                
-                st.download_button(
-                    label="📄 下載詳細分析報告 (MD)",
-                    data=report_content,
-                    file_name=f"backtest_analysis_report_{datetime.now().strftime('%Y%m%d')}.md",
-                    mime="text/markdown",
-                    help="下載完整的回測分析報告"
-                )
-            except:
-                st.info("分析報告文件讀取失敗")
-    
-    # 免責聲明
-    st.markdown("---")
-    st.markdown("""
-    <div style="background-color: #f8d7da; padding: 15px; border-radius: 10px; border-left: 5px solid #dc3545;">
-    <h4>⚠️ 免責聲明</h4>
-    <p>本回測結果僅供學術研究和教育用途，不構成投資建議。投資有風險，過去績效不代表未來表現。實際投資前請：</p>
-    <ul>
-        <li>進行充分的基本面分析</li>
-        <li>考慮個人風險承受能力</li>
-        <li>諮詢專業投資顧問</li>
-        <li>分散投資降低風險</li>
-    </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
-def show_version_updates():
-    """版本更新頁面"""
-    st.markdown('<div class="page-header">🔄 版本更新歷史</div>', unsafe_allow_html=True)
-    
-    # 版本更新說明
-    st.markdown("""
-    <div style="background-color: #f0f8ff; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-    <h4>📋 關於版本更新</h4>
-    <p>這裡記錄了台灣股票分析平台的所有重要更新和功能改進。我們持續優化平台功能，為用戶提供更好的股票分析體驗。</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # 版本更新時間線
-    st.subheader("📅 版本更新時間線")
-    
-    # 版本 3.0.0 - 當前版本
-    with st.expander("🚀 版本 3.0.0 - 完整功能版本 (2024年12月)", expanded=True):
-        st.markdown("""
-        ### ✨ 主要新功能
-        - 🔄 **版本更新頁面**: 新增版本更新歷史查看功能
-        - 📈 **投資組合分析**: 完整的投資組合管理和分析功能
-        - 🎯 **策略優化**: 布林通道策略參數優化
-        - 📊 **數據視覺化增強**: 更豐富的圖表和分析工具
-        
-        ### 🔧 功能改進
-        - ⚡ 提升數據載入速度
-        - 🎨 優化用戶界面設計
-        - 📱 改善響應式布局
-        - 🔍 增強股票搜尋功能
-        
-        ### 🐛 問題修復
-        - 修復數據篩選的邊界條件問題
-        - 解決圖表顯示異常
-        - 優化記憶體使用效率
-        
-        ### 📊 數據更新
-        - 更新至726支股票的完整財務數據
-        - 443支股票的3年歷史價格數據
-        - 改進數據準確性和完整性
-        """)
-    
-    # 版本 2.5.0
-    with st.expander("📊 版本 2.5.0 - 策略回測增強版 (2024年11月)"):
-        st.markdown("""
-        ### ✨ 主要新功能
-        - 🎯 **布林通道策略回測**: 完整的技術分析策略回測系統
-        - 📈 **股價走勢圖**: 清晰的價格圖表和技術指標
-        - 💰 **投資組合追蹤**: 實時計算策略表現和報酬率
-        - 📋 **交易記錄**: 詳細的買賣點記錄和分析
-        
-        ### 🔧 功能改進
-        - 🔄 策略與買入持有的表現對比
-        - 🎛️ 靈活的策略參數自訂功能
-        - 📊 增強的數據視覺化
-        - ⚡ 本地TWSE數據庫快速查詢
-        
-        ### 📊 數據更新
-        - 建立本地TWSE數據庫
-        - 443支股票的歷史價格數據
-        - 支援1年、2年、3年、5年回測期間
-        """)
-    
-    # 版本 2.0.0
-    with st.expander("🔍 版本 2.0.0 - 股票篩選工具 (2024年10月)"):
-        st.markdown("""
-        ### ✨ 主要新功能
-        - 🔍 **智能股票篩選**: 基於ROE、EPS、營收成長率等指標
-        - 🎛️ **滑動條界面**: 直觀的拖拉調整篩選條件
-        - ⚡ **快速預設策略**: 積極成長、價值投資、保守投資等
-        - 📈 **數據視覺化**: 互動式散點圖和分布圖
-        
-        ### 🔧 功能改進
-        - 📋 完整的726支台灣股票財務數據
-        - 🔍 股票搜尋和篩選功能
-        - 📊 統計指標卡片顯示
-        - 💾 篩選結果CSV下載
-        
-        ### 🎨 界面優化
-        - 現代化設計風格
-        - 響應式布局設計
-        - 自定義CSS樣式
-        - 直觀的操作流程
-        """)
-    
-    # 版本 1.5.0
-    with st.expander("🌐 版本 1.5.0 - 雲端部署版 (2024年9月)"):
-        st.markdown("""
-        ### ✨ 主要新功能
-        - 🌐 **Streamlit Cloud部署**: 支援雲端訪問
-        - 🔄 **自動化部署**: GitHub集成自動部署
-        - 📊 **數據更新機制**: 自動化數據更新和同步
-        - 📋 **完整文檔**: 詳細的使用和部署指南
-        
-        ### 🔧 功能改進
-        - ⚡ 優化應用啟動速度
-        - 🔍 改善數據載入機制
-        - 📱 移動端適配優化
-        - 🛡️ 增強錯誤處理機制
-        
-        ### 📄 文檔完善
-        - 部署指南 (DEPLOYMENT_GUIDE.md)
-        - 數據更新指南 (DATA_UPDATE_GUIDE.md)
-        - 策略回測指南 (STRATEGY_BACKTEST_GUIDE.md)
-        - 專案總結 (PROJECT_SUMMARY.md)
-        """)
-    
-    # 版本 1.0.0
-    with st.expander("🎉 版本 1.0.0 - 初始版本 (2024年8月)"):
-        st.markdown("""
-        ### ✨ 核心功能
-        - 📊 **基礎股票分析**: 台灣股票基本面數據分析
-        - 🕷️ **數據爬蟲**: 從TWSE官方API獲取股票數據
-        - 🎨 **Streamlit界面**: 基於Web的用戶界面
-        - 📋 **數據處理**: Pandas數據處理和分析
-        
-        ### 🔧 技術架構
-        - Python 3.8+ 支援
-        - Streamlit Web框架
-        - Pandas 數據處理
-        - Plotly 數據視覺化
-        
-        ### 📊 初始數據
-        - 50支台灣知名股票示例數據
-        - 基本財務指標
-        - 簡單篩選功能
-        """)
-    
-    # 統計信息
-    st.subheader("📊 平台統計")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "當前版本",
-            "3.0.0",
-            delta="最新"
-        )
-    
-    with col2:
-        st.metric(
-            "總更新次數",
-            "5",
-            delta="+1"
-        )
-    
-    with col3:
-        st.metric(
-            "功能模組",
-            "4",
-            delta="完整"
-        )
-    
-    with col4:
         st.metric(
             "開發時間",
             "4個月",
