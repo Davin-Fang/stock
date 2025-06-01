@@ -112,261 +112,101 @@ def load_stock_data():
         st.sidebar.error("❌ 找不到股票數據文件")
         return None
 
-# 獲取股票歷史價格 - 多重來源備用
+# 獲取股票歷史價格 - 使用本地TWSE數據庫
 @st.cache_data
 def get_stock_price_data(stock_code, period="1y"):
-    """獲取股票歷史價格數據 - 使用多重來源"""
+    """從本地TWSE數據庫獲取股票歷史價格數據"""
     
-    # 方法1: 使用 yfinance (首選)
-    def try_yfinance(code, period):
-        try:
-            # 確保股票代碼格式正確
-            if not code.endswith('.TW'):
-                code = f"{code}.TW"
-            
-            # 獲取股票數據
-            ticker = yf.Ticker(code)
-            hist = ticker.history(period=period)
-            
-            if hist.empty:
-                return None
-            
-            # 重置索引，將日期作為列
-            hist.reset_index(inplace=True)
-            return hist
+    # 清理股票代碼
+    clean_code = stock_code.replace('.TW', '').strip()
+    
+    # 本地數據文件路徑
+    data_file = f'data/stock_prices/{clean_code}_price_data.csv'
+    
+    try:
+        if not os.path.exists(data_file):
+            st.error(f"❌ 找不到股票 {clean_code} 的本地數據文件")
+            st.info("💡 請先使用 TWSE 數據下載器下載股票數據")
+            st.code("python twse_data_downloader.py", language="bash")
+            return None
         
-        except Exception as e:
-            st.warning(f"yfinance 獲取失敗: {str(e)}")
+        # 讀取本地數據
+        df = pd.read_csv(data_file)
+        
+        if df.empty:
+            st.error(f"❌ 股票 {clean_code} 的數據文件為空")
             return None
-    
-    # 方法2: 使用 twstock (備用)
-    def try_twstock(code, period):
-        try:
-            import twstock
-            
-            # 去除 .TW 後綴
-            clean_code = code.replace('.TW', '')
-            
-            # 計算日期範圍
-            from datetime import datetime, timedelta
-            end_date = datetime.now()
-            
-            if period == "1y":
-                start_date = end_date - timedelta(days=365)
-            elif period == "2y":
-                start_date = end_date - timedelta(days=730)
-            elif period == "3y":
-                start_date = end_date - timedelta(days=1095)
-            elif period == "5y":
-                start_date = end_date - timedelta(days=1825)
-            else:
-                start_date = end_date - timedelta(days=365)
-            
-            # 獲取股票數據
-            stock = twstock.Stock(clean_code)
-            data = stock.fetch_from(start_date.year, start_date.month)
-            
-            if not data:
-                return None
-            
-            # 轉換為 DataFrame
-            df_data = []
-            for record in data:
-                df_data.append({
-                    'Date': record.date,
-                    'Open': record.open,
-                    'High': record.high,
-                    'Low': record.low,
-                    'Close': record.close,
-                    'Volume': record.capacity
-                })
-            
-            df = pd.DataFrame(df_data)
-            return df
-            
-        except ImportError:
-            st.warning("twstock 套件未安裝，嘗試安裝...")
+        
+        # 轉換日期格式
+        df['Date'] = pd.to_datetime(df['Date'])
+        
+        # 根據期間篩選數據
+        end_date = df['Date'].max()
+        
+        if period == "1y":
+            start_date = end_date - timedelta(days=365)
+        elif period == "2y":
+            start_date = end_date - timedelta(days=730)
+        elif period == "3y":
+            start_date = end_date - timedelta(days=1095)
+        elif period == "5y":
+            start_date = end_date - timedelta(days=1825)
+        else:
+            start_date = end_date - timedelta(days=365)
+        
+        # 篩選期間內的數據
+        filtered_df = df[df['Date'] >= start_date].copy()
+        filtered_df = filtered_df.sort_values('Date').reset_index(drop=True)
+        
+        if len(filtered_df) < 50:
+            st.warning(f"⚠️ 股票 {clean_code} 在指定期間內的數據不足 (只有 {len(filtered_df)} 筆)")
+            st.info("💡 建議選擇更長的時間期間或檢查數據完整性")
+            return None
+        
+        st.success(f"✅ 成功從本地數據庫載入 {clean_code} 的數據 ({len(filtered_df)} 筆記錄)")
+        st.info(f"📅 數據期間: {filtered_df['Date'].min().strftime('%Y-%m-%d')} ~ {filtered_df['Date'].max().strftime('%Y-%m-%d')}")
+        
+        return filtered_df
+        
+    except Exception as e:
+        st.error(f"❌ 讀取股票 {clean_code} 數據失敗: {str(e)}")
+        return None
+
+# 獲取可用股票列表
+@st.cache_data
+def get_available_stocks():
+    """獲取本地數據庫中可用的股票列表"""
+    try:
+        data_dir = 'data/stock_prices'
+        if not os.path.exists(data_dir):
+            return []
+        
+        files = glob.glob(os.path.join(data_dir, '*_price_data.csv'))
+        available_stocks = []
+        
+        for file in files:
+            stock_code = os.path.basename(file).replace('_price_data.csv', '')
             try:
-                import subprocess
-                import sys
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "twstock"])
-                import twstock
-                return try_twstock(code, period)  # 遞歸重試
+                df = pd.read_csv(file)
+                if len(df) > 50:  # 至少要有50筆數據
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    available_stocks.append({
+                        'code': stock_code,
+                        'records': len(df),
+                        'start_date': df['Date'].min(),
+                        'end_date': df['Date'].max(),
+                        'latest_price': df['Close'].iloc[-1] if len(df) > 0 else 0
+                    })
             except:
-                st.error("無法安裝 twstock 套件")
-                return None
-        except Exception as e:
-            st.warning(f"twstock 獲取失敗: {str(e)}")
-            return None
-    
-    # 方法3: 使用 TWSE API (備用)
-    def try_twse_api(code, period):
-        try:
-            import requests
-            import json
-            from datetime import datetime, timedelta
-            
-            # 去除 .TW 後綴
-            clean_code = code.replace('.TW', '')
-            
-            # 計算日期範圍 (TWSE API 有限制，只能獲取較短期間)
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=60)  # 只獲取最近60天
-            
-            # TWSE API 請求
-            url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY"
-            
-            df_list = []
-            current_date = start_date
-            
-            while current_date <= end_date:
-                params = {
-                    'response': 'json',
-                    'date': current_date.strftime('%Y%m%d'),
-                    'stockNo': clean_code
-                }
-                
-                try:
-                    response = requests.get(url, params=params, timeout=10)
-                    data = response.json()
-                    
-                    if 'data' in data and data['data']:
-                        for row in data['data']:
-                            try:
-                                date_str = row[0].replace('/', '-')
-                                df_list.append({
-                                    'Date': pd.to_datetime(f"2023-{date_str}"),  # 簡化日期處理
-                                    'Open': float(row[3].replace(',', '')),
-                                    'High': float(row[4].replace(',', '')),
-                                    'Low': float(row[5].replace(',', '')),
-                                    'Close': float(row[6].replace(',', '')),
-                                    'Volume': int(row[1].replace(',', ''))
-                                })
-                            except:
-                                continue
-                
-                except:
-                    pass
-                
-                current_date += timedelta(days=30)
-            
-            if df_list:
-                df = pd.DataFrame(df_list)
-                df = df.sort_values('Date').reset_index(drop=True)
-                return df
-            
-            return None
-            
-        except Exception as e:
-            st.warning(f"TWSE API 獲取失敗: {str(e)}")
-            return None
-    
-    # 方法4: 生成模擬數據 (最後備用)
-    def generate_mock_data(code, period):
-        try:
-            st.warning("🔧 無法獲取真實數據，生成模擬數據供演示使用")
-            
-            from datetime import datetime, timedelta
-            import numpy as np
-            
-            # 計算日期範圍
-            end_date = datetime.now()
-            if period == "1y":
-                days = 252  # 一年交易日
-                start_date = end_date - timedelta(days=365)
-            elif period == "2y":
-                days = 504
-                start_date = end_date - timedelta(days=730)
-            else:
-                days = 252
-                start_date = end_date - timedelta(days=365)
-            
-            # 生成日期序列
-            date_range = pd.date_range(start=start_date, end=end_date, freq='D')
-            date_range = [d for d in date_range if d.weekday() < 5]  # 只保留工作日
-            
-            # 根據股票代碼設定基準價格
-            base_prices = {
-                '2330': 500,  # 台積電
-                '2317': 100,  # 鴻海
-                '2454': 800,  # 聯發科
-                '0050': 150,  # 0050
-                '2891': 25,   # 中信金
-            }
-            
-            clean_code = code.replace('.TW', '')
-            base_price = base_prices.get(clean_code, 100)
-            
-            # 生成隨機價格序列
-            np.random.seed(hash(clean_code) % 1000)  # 根據股票代碼生成一致的隨機序列
-            returns = np.random.normal(0.001, 0.02, len(date_range))  # 日報酬率
-            
-            prices = [base_price]
-            for ret in returns[1:]:
-                new_price = prices[-1] * (1 + ret)
-                prices.append(max(new_price, 1))  # 確保價格不為負
-            
-            # 生成 OHLC 數據
-            df_data = []
-            for i, date in enumerate(date_range):
-                close_price = prices[i]
-                daily_volatility = close_price * 0.02
-                
-                high = close_price + np.random.uniform(0, daily_volatility)
-                low = close_price - np.random.uniform(0, daily_volatility)
-                open_price = low + np.random.uniform(0, high - low)
-                volume = int(np.random.uniform(1000000, 10000000))
-                
-                df_data.append({
-                    'Date': date,
-                    'Open': round(open_price, 2),
-                    'High': round(high, 2),
-                    'Low': round(low, 2),
-                    'Close': round(close_price, 2),
-                    'Volume': volume
-                })
-            
-            df = pd.DataFrame(df_data)
-            st.info(f"📊 生成了 {len(df)} 天的模擬數據用於演示")
-            return df
-            
-        except Exception as e:
-            st.error(f"生成模擬數據失敗: {str(e)}")
-            return None
-    
-    # 依序嘗試各種方法
-    st.info(f"🔍 正在從多個來源獲取 {stock_code} 的股價數據...")
-    
-    # 嘗試 yfinance
-    with st.spinner("📊 嘗試 Yahoo Finance..."):
-        data = try_yfinance(stock_code, period)
-        if data is not None and len(data) > 50:
-            st.success("✅ 成功從 Yahoo Finance 獲取數據")
-            return data
-    
-    # 嘗試 twstock
-    with st.spinner("📊 嘗試 TWStock..."):
-        data = try_twstock(stock_code, period)
-        if data is not None and len(data) > 50:
-            st.success("✅ 成功從 TWStock 獲取數據")
-            return data
-    
-    # 嘗試 TWSE API
-    with st.spinner("📊 嘗試 TWSE API..."):
-        data = try_twse_api(stock_code, period)
-        if data is not None and len(data) > 10:
-            st.success("✅ 成功從 TWSE API 獲取數據")
-            return data
-    
-    # 最後使用模擬數據
-    with st.spinner("📊 生成模擬數據..."):
-        data = generate_mock_data(stock_code, period)
-        if data is not None:
-            return data
-    
-    # 所有方法都失敗
-    st.error(f"❌ 無法從任何來源獲取 {stock_code} 的數據")
-    return None
+                continue
+        
+        # 按股票代碼排序
+        available_stocks.sort(key=lambda x: x['code'])
+        return available_stocks
+        
+    except Exception as e:
+        st.error(f"❌ 獲取可用股票列表失敗: {str(e)}")
+        return []
 
 # 計算布林通道策略
 def calculate_bollinger_bands(df, window=20, num_std=2):
@@ -485,7 +325,7 @@ def main():
     
     page = st.sidebar.selectbox(
         "選擇功能頁面",
-        ["🔍 股票篩選工具", "📊 個股策略回測", "📈 投資組合分析"],
+        ["🔍 股票篩選工具", "📊 個股策略回測", "📈 投資組合分析", "🎯 批量回測結果", "🔄 版本更新"],
         index=0
     )
     
@@ -498,6 +338,10 @@ def main():
         show_strategy_backtest(stock_data)
     elif page == "📈 投資組合分析":
         show_portfolio_analysis(stock_data)
+    elif page == "🎯 批量回測結果":
+        show_backtest_results()
+    elif page == "🔄 版本更新":
+        show_version_updates()
 
 def show_stock_screener(stock_data):
     """股票篩選工具頁面"""
@@ -728,41 +572,147 @@ def show_strategy_backtest(stock_data):
     """個股策略回測頁面"""
     st.markdown('<div class="page-header">📊 個股策略回測</div>', unsafe_allow_html=True)
     
-    # 股票代碼輸入
-    col1, col2 = st.columns([2, 1])
+    # 添加分頁選擇
+    tab1, tab2 = st.tabs(["📈 個股回測", "🎯 批量回測"])
+    
+    with tab1:
+        show_individual_backtest(stock_data)
+    
+    with tab2:
+        show_batch_backtest(stock_data)
+
+def show_individual_backtest(stock_data):
+    """個股回測分頁"""
+    # 檢查本地數據庫狀態
+    available_stocks = get_available_stocks()
+    
+    if not available_stocks:
+        st.error("❌ 本地數據庫中沒有可用的股票數據")
+        st.info("💡 請先使用 TWSE 數據下載器下載股票數據")
+        
+        with st.expander("📥 如何下載股票數據", expanded=True):
+            st.markdown("""
+            **步驟 1: 執行數據下載器**
+            ```bash
+            python twse_data_downloader.py
+            ```
+            
+            **步驟 2: 選擇下載選項**
+            - 選項 1: 下載所有股票數據 (推薦)
+            - 選項 2: 查看可用股票
+            - 選項 3: 下載單一股票
+            
+            **注意事項:**
+            - 首次下載可能需要較長時間
+            - 數據會保存在 `data/stock_prices/` 目錄
+            - 支援增量更新，避免重複下載
+            """)
+        
+        return
+    
+    # 顯示數據庫狀態
+    st.success(f"✅ 本地數據庫已載入 {len(available_stocks)} 支股票的數據")
+    
+    # 股票選擇區域
+    col1, col2 = st.columns([3, 1])
     
     with col1:
-        stock_input = st.text_input(
-            "請輸入股票代碼 (例如: 2330, 2454, 0050)",
-            value="2330",
-            help="輸入台灣股票代碼，系統會自動添加.TW後綴"
+        st.subheader("🎯 選擇股票")
+        
+        # 股票代碼輸入方式選擇
+        input_method = st.radio(
+            "選擇輸入方式:",
+            ["📝 手動輸入股票代碼", "📋 從可用列表選擇"],
+            horizontal=True
         )
+        
+        if input_method == "📝 手動輸入股票代碼":
+            stock_input = st.text_input(
+                "請輸入股票代碼 (例如: 2330, 2454, 0050)",
+                value="2330",
+                help="輸入台灣股票代碼，不需要.TW後綴"
+            )
+        else:
+            # 創建選擇選項
+            stock_options = []
+            for stock in available_stocks:
+                latest_date = stock['end_date'].strftime('%Y-%m-%d')
+                option_text = f"{stock['code']} (最新: {stock['latest_price']:.2f}, 更新至: {latest_date})"
+                stock_options.append(option_text)
+            
+            selected_option = st.selectbox(
+                "選擇股票:",
+                stock_options,
+                help="從本地數據庫中選擇可用的股票"
+            )
+            
+            # 提取股票代碼
+            stock_input = selected_option.split(' ')[0] if selected_option else "2330"
     
     with col2:
+        st.subheader("⏰ 回測期間")
         period = st.selectbox(
-            "選擇回測期間",
+            "選擇期間",
             ["1y", "2y", "3y", "5y"],
-            index=0
+            index=0,
+            help="選擇回測的時間範圍"
         )
+        
+        # 顯示可用股票統計
+        with st.expander("📊 數據庫統計", expanded=False):
+            total_records = sum(stock['records'] for stock in available_stocks)
+            avg_records = total_records // len(available_stocks) if available_stocks else 0
+            
+            st.metric("總股票數", len(available_stocks))
+            st.metric("總交易記錄", f"{total_records:,}")
+            st.metric("平均記錄數", f"{avg_records:,}")
+            
+            # 最新更新時間
+            if available_stocks:
+                latest_update = max(stock['end_date'] for stock in available_stocks)
+                st.metric("最新數據", latest_update.strftime('%Y-%m-%d'))
     
     if stock_input:
         # 獲取股票資訊
         stock_code = stock_input.strip()
+        
+        # 從本地數據庫查找股票資訊
+        local_stock_info = None
+        for stock in available_stocks:
+            if stock['code'] == stock_code:
+                local_stock_info = stock
+                break
+        
+        # 從股票篩選數據查找名稱
+        stock_name = "未知"
         if stock_data is not None:
             stock_info = stock_data[stock_data['stock_code'].str.contains(stock_code, na=False)]
             if not stock_info.empty:
                 stock_name = stock_info.iloc[0]['name']
-                st.info(f"📈 選擇股票: {stock_code} - {stock_name}")
-            else:
-                st.warning(f"⚠️ 在數據庫中找不到股票 {stock_code} 的基本資料")
+        
+        # 顯示股票資訊
+        if local_stock_info:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("股票代碼", stock_code)
+            with col2:
+                st.metric("股票名稱", stock_name)
+            with col3:
+                st.metric("數據筆數", f"{local_stock_info['records']:,}")
+            with col4:
+                st.metric("最新價格", f"{local_stock_info['latest_price']:.2f}")
+            
+            st.info(f"📅 數據期間: {local_stock_info['start_date'].strftime('%Y-%m-%d')} ~ {local_stock_info['end_date'].strftime('%Y-%m-%d')}")
+        else:
+            st.warning(f"⚠️ 本地數據庫中找不到股票 {stock_code}")
+            st.info("💡 請檢查股票代碼是否正確，或使用數據下載器下載該股票數據")
+            return
         
         # 獲取股價數據
-        with st.spinner(f"正在獲取 {stock_code} 的股價數據..."):
+        with st.spinner(f"正在從本地數據庫載入 {stock_code} 的數據..."):
             price_data = get_stock_price_data(stock_code, period)
         
         if price_data is not None:
-            st.success(f"✅ 成功獲取 {len(price_data)} 天的股價數據")
-            
             # 顯示股價曲線圖
             st.subheader("📈 股價走勢圖")
             
@@ -776,10 +726,11 @@ def show_strategy_backtest(stock_data):
             ))
             
             fig.update_layout(
-                title=f"{stock_code} 股價走勢 ({period})",
+                title=f"{stock_code} - {stock_name} 股價走勢 ({period})",
                 xaxis_title="日期",
                 yaxis_title="股價 (TWD)",
-                hovermode='x unified'
+                hovermode='x unified',
+                height=500
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -789,11 +740,51 @@ def show_strategy_backtest(stock_data):
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                bb_window = st.number_input("移動平均週期", min_value=5, max_value=50, value=20)
+                bb_window = st.number_input(
+                    "移動平均週期", 
+                    min_value=5, 
+                    max_value=50, 
+                    value=20,
+                    help="計算移動平均線的天數"
+                )
             with col2:
-                bb_std = st.number_input("標準差倍數", min_value=1.0, max_value=3.0, value=2.0, step=0.1)
+                bb_std = st.number_input(
+                    "標準差倍數", 
+                    min_value=1.0, 
+                    max_value=3.0, 
+                    value=2.0, 
+                    step=0.1,
+                    help="布林通道寬度的標準差倍數"
+                )
             with col3:
-                initial_capital = st.number_input("初始資金", min_value=10000, max_value=10000000, value=100000, step=10000)
+                initial_capital = st.number_input(
+                    "初始資金", 
+                    min_value=10000, 
+                    max_value=10000000, 
+                    value=100000, 
+                    step=10000,
+                    help="回測的初始投資金額"
+                )
+            
+            # 策略說明
+            with st.expander("📖 布林通道策略說明", expanded=False):
+                st.markdown("""
+                **布林通道策略原理:**
+                
+                1. **指標計算:**
+                   - 中軌: {window}日移動平均線
+                   - 上軌: 中軌 + {std}倍標準差
+                   - 下軌: 中軌 - {std}倍標準差
+                
+                2. **交易信號:**
+                   - **買入信號**: 股價觸及下軌後反彈
+                   - **賣出信號**: 股價觸及上軌
+                
+                3. **策略邏輯:**
+                   - 當股價跌至下軌時，認為超賣，等待反彈買入
+                   - 當股價漲至上軌時，認為超買，賣出獲利
+                   - 利用股價在通道內震盪的特性進行交易
+                """.format(window=bb_window, std=bb_std))
             
             # 執行回測
             if st.button("🚀 執行布林通道策略回測", type="primary"):
@@ -902,7 +893,7 @@ def show_strategy_backtest(stock_data):
                             ))
                     
                     fig.update_layout(
-                        title=f"{stock_code} 布林通道策略回測",
+                        title=f"{stock_code} - {stock_name} 布林通道策略回測",
                         xaxis_title="日期",
                         yaxis_title="股價 (TWD)",
                         hovermode='x unified',
@@ -969,11 +960,213 @@ def show_strategy_backtest(stock_data):
                         st.subheader("📝 交易記錄")
                         trades_df = pd.DataFrame(backtest_result['trades'])
                         st.dataframe(trades_df, use_container_width=True)
-                
+
+def show_batch_backtest(stock_data):
+    """批量回測分頁"""
+    st.subheader("🎯 批量布林通道策略回測")
+    
+    # 檢查是否有回測結果文件
+    result_files = glob.glob('backtest_results_*.csv')
+    
+    if not result_files:
+        st.info("💡 尚未執行批量回測，請先執行批量回測來生成結果")
+        
+        # 提供執行批量回測的選項
+        st.markdown("### 🚀 執行批量回測")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            bb_window = st.number_input(
+                "移動平均週期", 
+                min_value=5, 
+                max_value=50, 
+                value=20,
+                key="batch_bb_window"
+            )
+        with col2:
+            bb_std = st.number_input(
+                "標準差倍數", 
+                min_value=1.0, 
+                max_value=3.0, 
+                value=2.0, 
+                step=0.1,
+                key="batch_bb_std"
+            )
+        with col3:
+            initial_capital = st.number_input(
+                "初始資金", 
+                min_value=10000, 
+                max_value=1000000, 
+                value=100000, 
+                step=10000,
+                key="batch_initial_capital"
+            )
+        
+        # 顯示批量回測腳本信息
+        with st.expander("📖 批量回測說明", expanded=True):
+            st.markdown("""
+            **批量回測功能:**
+            
+            1. **覆蓋範圍**: 對所有可用股票執行布林通道策略回測
+            2. **篩選條件**: 自動篩選出報酬率≥10%的優質股票
+            3. **結果輸出**: 生成詳細的CSV結果文件和分析報告
+            4. **執行方式**: 需要在命令行執行批量回測腳本
+            
+            **執行步驟:**
+            ```bash
+            python batch_backtest.py
+            ```
+            
+            **預期結果:**
+            - 完整回測結果文件 (所有股票)
+            - 篩選結果文件 (報酬率≥10%的股票)
+            - 詳細分析報告
+            """)
+        
+        st.warning("⚠️ 請在命令行中執行 `python batch_backtest.py` 來生成批量回測結果")
+        
+        return
+    
+    # 載入最新的回測結果
+    latest_full_file = max([f for f in result_files if 'full' in f], key=os.path.getctime)
+    latest_profitable_file = max([f for f in result_files if 'profitable' in f], key=os.path.getctime) if any('profitable' in f for f in result_files) else None
+    
+    try:
+        full_results = pd.read_csv(latest_full_file)
+        profitable_results = pd.read_csv(latest_profitable_file) if latest_profitable_file else None
+        
+        st.success(f"✅ 載入批量回測結果: {os.path.basename(latest_full_file)}")
+        
+        # 顯示總體統計
+        st.subheader("📊 回測統計總覽")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("總回測股票", len(full_results))
+        
+        with col2:
+            profitable_count = len(profitable_results) if profitable_results is not None else len(full_results[full_results['總報酬率(%)'] >= 10])
+            st.metric("優質股票 (≥10%)", profitable_count)
+        
+        with col3:
+            avg_return = full_results['總報酬率(%)'].mean()
+            st.metric("平均報酬率", f"{avg_return:.2f}%")
+        
+        with col4:
+            max_return = full_results['總報酬率(%)'].max()
+            st.metric("最高報酬率", f"{max_return:.2f}%")
+        
+        # 分類顯示結果
+        st.subheader("🏆 優質股票分析")
+        
+        # 使用優質股票結果或從完整結果中篩選
+        display_results = profitable_results if profitable_results is not None else full_results[full_results['總報酬率(%)'] >= 10].copy()
+        
+        if len(display_results) > 0:
+            # 按報酬率分類
+            超高報酬 = display_results[display_results['總報酬率(%)'] >= 50]
+            高報酬 = display_results[(display_results['總報酬率(%)'] >= 20) & (display_results['總報酬率(%)'] < 50)]
+            中等報酬 = display_results[(display_results['總報酬率(%)'] >= 10) & (display_results['總報酬率(%)'] < 20)]
+            
+            # 分頁顯示
+            tab1, tab2, tab3, tab4 = st.tabs(["🚀 超高報酬 (≥50%)", "📈 高報酬 (20-50%)", "💰 中等報酬 (10-20%)", "📋 完整列表"])
+            
+            with tab1:
+                if len(超高報酬) > 0:
+                    st.markdown(f"**找到 {len(超高報酬)} 支超高報酬股票:**")
+                    display_df = 超高報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
                 else:
-                    st.error("❌ 回測失敗，可能是數據不足或其他問題")
+                    st.info("📊 沒有報酬率≥50%的股票")
+            
+            with tab2:
+                if len(高報酬) > 0:
+                    st.markdown(f"**找到 {len(高報酬)} 支高報酬股票:**")
+                    display_df = 高報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
+                else:
+                    st.info("📊 沒有報酬率在20-50%的股票")
+            
+            with tab3:
+                if len(中等報酬) > 0:
+                    st.markdown(f"**找到 {len(中等報酬)} 支中等報酬股票:**")
+                    display_df = 中等報酬.sort_values('總報酬率(%)', ascending=False)
+                    st.dataframe(display_df, use_container_width=True)
+                else:
+                    st.info("📊 沒有報酬率在10-20%的股票")
+            
+            with tab4:
+                st.markdown(f"**所有優質股票 ({len(display_results)} 支):**")
+                display_df = display_results.sort_values('總報酬率(%)', ascending=False)
+                st.dataframe(display_df, use_container_width=True)
+        
         else:
-            st.error(f"❌ 無法獲取股票 {stock_code} 的價格數據，請檢查股票代碼是否正確")
+            st.warning("⚠️ 沒有找到報酬率≥10%的股票")
+        
+        # 報酬率分布圖
+        st.subheader("📊 報酬率分布分析")
+        
+        fig = px.histogram(
+            full_results, 
+            x='總報酬率(%)', 
+            nbins=30,
+            title="所有股票報酬率分布",
+            labels={'總報酬率(%)': '報酬率 (%)', 'count': '股票數量'}
+        )
+        fig.add_vline(x=10, line_dash="dash", line_color="red", annotation_text="10%門檻")
+        fig.add_vline(x=0, line_dash="dash", line_color="gray", annotation_text="損益平衡")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 投資建議
+        st.subheader("💡 投資建議")
+        
+        if len(display_results) >= 10:
+            top_10 = display_results.head(10)
+            
+            st.markdown("### 🎯 推薦投資組合 (前10名)")
+            recommendation_df = top_10[['股票代碼', '總報酬率(%)', '最終資金', '交易次數']].copy()
+            st.dataframe(recommendation_df, use_container_width=True)
+            
+            avg_top10_return = top_10['總報酬率(%)'].mean()
+            st.info(f"💰 前10名平均報酬率: {avg_top10_return:.2f}%")
+            
+        # 風險提醒
+        st.markdown("### ⚠️ 風險提醒")
+        st.warning("""
+        - 過去績效不代表未來表現
+        - 建議分散投資，單一股票配置不超過總資金的5%
+        - 設定停損點，建議15-20%
+        - 定期檢視和調整投資組合
+        """)
+        
+        # 下載功能
+        st.subheader("📥 下載結果")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.download_button(
+                label="📊 下載完整回測結果",
+                data=full_results.to_csv(index=False, encoding='utf-8-sig'),
+                file_name=f"完整回測結果_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            ):
+                st.success("✅ 下載完成")
+        
+        with col2:
+            if profitable_results is not None and len(profitable_results) > 0:
+                if st.download_button(
+                    label="🏆 下載優質股票結果",
+                    data=profitable_results.to_csv(index=False, encoding='utf-8-sig'),
+                    file_name=f"優質股票結果_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                ):
+                    st.success("✅ 下載完成")
+    
+    except Exception as e:
+        st.error(f"❌ 載入回測結果失敗: {str(e)}")
+        st.info("💡 請確保回測結果文件格式正確")
 
 def show_portfolio_analysis(stock_data):
     """投資組合分析頁面"""
@@ -983,6 +1176,608 @@ def show_portfolio_analysis(stock_data):
     if stock_data is not None:
         st.subheader("📊 可用於組合分析的股票數量")
         st.metric("股票總數", len(stock_data))
+
+def show_backtest_results():
+    """批量回測結果頁面"""
+    st.markdown('<div class="page-header">🎯 布林通道策略批量回測結果</div>', unsafe_allow_html=True)
+    
+    # 載入回測結果
+    @st.cache_data
+    def load_backtest_results():
+        """載入最新的回測結果"""
+        try:
+            # 尋找最新的結果文件
+            full_files = glob.glob('backtest_results_full_*.csv')
+            profitable_files = glob.glob('backtest_results_profitable_*.csv')
+            
+            if not full_files:
+                return None, None, "找不到回測結果文件"
+            
+            # 選擇最新的文件
+            latest_full = max(full_files, key=os.path.getctime)
+            latest_profitable = max(profitable_files, key=os.path.getctime) if profitable_files else None
+            
+            full_df = pd.read_csv(latest_full)
+            profitable_df = pd.read_csv(latest_profitable) if latest_profitable else pd.DataFrame()
+            
+            return full_df, profitable_df, None
+            
+        except Exception as e:
+            return None, None, f"載入回測結果失敗: {str(e)}"
+    
+    full_df, profitable_df, error = load_backtest_results()
+    
+    if error:
+        st.error(f"❌ {error}")
+        st.info("💡 請先運行批量回測腳本生成結果")
+        st.code("python batch_backtest.py", language="bash")
+        return
+    
+    # 回測概況
+    st.subheader("📊 回測概況")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            "回測股票數",
+            f"{len(full_df):,}",
+            help="總共回測的股票數量"
+        )
+    
+    with col2:
+        avg_return = full_df['total_return'].mean()
+        st.metric(
+            "平均報酬率",
+            f"{avg_return:.2f}%",
+            delta=f"{'📈' if avg_return > 0 else '📉'}",
+            help="所有股票的平均報酬率"
+        )
+    
+    with col3:
+        win_rate = len(full_df[full_df['total_return'] > 0]) / len(full_df) * 100
+        st.metric(
+            "勝率",
+            f"{win_rate:.1f}%",
+            delta=f"{'🎯' if win_rate > 50 else '⚠️'}",
+            help="正報酬股票的比例"
+        )
+    
+    with col4:
+        st.metric(
+            "優質股票數",
+            f"{len(profitable_df):,}",
+            delta=f"{len(profitable_df)/len(full_df)*100:.1f}%",
+            help="報酬率≥10%的股票數量"
+        )
+    
+    # 統計分析
+    st.subheader("📈 統計分析")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📊 報酬率統計")
+        stats_data = {
+            "統計指標": ["最高報酬率", "最低報酬率", "標準差", "中位數", "25%分位數", "75%分位數"],
+            "數值": [
+                f"{full_df['total_return'].max():.2f}%",
+                f"{full_df['total_return'].min():.2f}%",
+                f"{full_df['total_return'].std():.2f}%",
+                f"{full_df['total_return'].median():.2f}%",
+                f"{full_df['total_return'].quantile(0.25):.2f}%",
+                f"{full_df['total_return'].quantile(0.75):.2f}%"
+            ]
+        }
+        st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
+    
+    with col2:
+        st.markdown("### 🎯 報酬率分布")
+        bins = [-100, -50, -20, -10, 0, 10, 20, 50, 100, float('inf')]
+        labels = ['<-50%', '-50~-20%', '-20~-10%', '-10~0%', '0~10%', '10~20%', '20~50%', '50~100%', '>100%']
+        
+        distribution_data = []
+        for i, label in enumerate(labels):
+            if i < len(bins) - 1:
+                count = len(full_df[(full_df['total_return'] >= bins[i]) & 
+                                   (full_df['total_return'] < bins[i+1])])
+                percentage = count / len(full_df) * 100
+                distribution_data.append({
+                    "區間": label,
+                    "股票數": count,
+                    "比例": f"{percentage:.1f}%"
+                })
+        
+        st.dataframe(pd.DataFrame(distribution_data), use_container_width=True, hide_index=True)
+    
+    # 優質股票清單
+    if len(profitable_df) > 0:
+        st.subheader("🏆 優質股票清單 (報酬率 ≥ 10%)")
+        
+        # 分類顯示
+        tab1, tab2, tab3, tab4 = st.tabs(["🥇 超高報酬 (>50%)", "🥈 高報酬 (30-50%)", "🥉 中等報酬 (20-30%)", "📊 穩健報酬 (10-20%)"])
+        
+        with tab1:
+            super_high = profitable_df[profitable_df['total_return'] > 50]
+            if len(super_high) > 0:
+                st.markdown(f"**共 {len(super_high)} 支股票**")
+                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
+                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
+                super_high_display = super_high[display_cols].copy()
+                super_high_display.columns = col_names
+                super_high_display['最終資金'] = super_high_display['最終資金'].apply(lambda x: f"${x:,.0f}")
+                st.dataframe(super_high_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("沒有股票達到超高報酬率標準")
+        
+        with tab2:
+            high_return = profitable_df[(profitable_df['total_return'] >= 30) & (profitable_df['total_return'] <= 50)]
+            if len(high_return) > 0:
+                st.markdown(f"**共 {len(high_return)} 支股票**")
+                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
+                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
+                high_return_display = high_return[display_cols].copy()
+                high_return_display.columns = col_names
+                high_return_display['最終資金'] = high_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
+                st.dataframe(high_return_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("沒有股票在此報酬率區間")
+        
+        with tab3:
+            medium_return = profitable_df[(profitable_df['total_return'] >= 20) & (profitable_df['total_return'] < 30)]
+            if len(medium_return) > 0:
+                st.markdown(f"**共 {len(medium_return)} 支股票**")
+                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
+                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
+                medium_return_display = medium_return[display_cols].copy()
+                medium_return_display.columns = col_names
+                medium_return_display['最終資金'] = medium_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
+                st.dataframe(medium_return_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("沒有股票在此報酬率區間")
+        
+        with tab4:
+            stable_return = profitable_df[(profitable_df['total_return'] >= 10) & (profitable_df['total_return'] < 20)]
+            if len(stable_return) > 0:
+                st.markdown(f"**共 {len(stable_return)} 支股票**")
+                display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
+                col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
+                stable_return_display = stable_return[display_cols].copy()
+                stable_return_display.columns = col_names
+                stable_return_display['最終資金'] = stable_return_display['最終資金'].apply(lambda x: f"${x:,.0f}")
+                st.dataframe(stable_return_display, use_container_width=True, hide_index=True)
+            else:
+                st.info("沒有股票在此報酬率區間")
+        
+        # 推薦股票池
+        st.subheader("🎯 推薦股票池 (前20名)")
+        
+        top_20 = profitable_df.head(20)
+        display_cols = ['stock_code', 'stock_name', 'total_return', 'num_trades', 'final_capital']
+        col_names = ['股票代碼', '股票名稱', '報酬率(%)', '交易次數', '最終資金']
+        top_20_display = top_20[display_cols].copy()
+        top_20_display.columns = col_names
+        top_20_display['最終資金'] = top_20_display['最終資金'].apply(lambda x: f"${x:,.0f}")
+        
+        # 添加排名
+        top_20_display.insert(0, '排名', range(1, len(top_20_display) + 1))
+        
+        st.dataframe(top_20_display, use_container_width=True, hide_index=True)
+    
+    # 策略評估
+    st.subheader("🎯 策略評估")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### ✅ 優點")
+        advantages = []
+        
+        if len(profitable_df) > 0:
+            advantages.append(f"• 有 **{len(profitable_df)} 支股票** 達到10%以上報酬率")
+            advantages.append(f"• 最高報酬率達到 **{full_df['total_return'].max():.2f}%**")
+            advantages.append(f"• 優質股票平均報酬率為 **{profitable_df['total_return'].mean():.2f}%**")
+        
+        if win_rate > 45:
+            advantages.append(f"• 勝率達到 **{win_rate:.1f}%**，接近或超過50%")
+        
+        advantages.append("• 交易頻率適中，不會過度頻繁")
+        
+        for advantage in advantages:
+            st.markdown(advantage)
+    
+    with col2:
+        st.markdown("### ⚠️ 風險提醒")
+        risks = [
+            f"• 最大虧損達到 **{full_df['total_return'].min():.2f}%**",
+            f"• 報酬率標準差為 **{full_df['total_return'].std():.2f}%**，波動較大",
+            f"• 有 **{len(full_df[full_df['total_return'] < -20])} 支股票** 虧損超過20%",
+            "• 過去績效不代表未來表現",
+            "• 實際交易需考慮手續費和滑價成本"
+        ]
+        
+        for risk in risks:
+            st.markdown(risk)
+    
+    # 投資建議
+    st.subheader("💡 投資建議")
+    
+    st.markdown("""
+    <div style="background-color: #d4edda; padding: 15px; border-radius: 10px; border-left: 5px solid #28a745;">
+    <h4>🛡️ 風險管理建議</h4>
+    <ul>
+        <li><strong>停損設定</strong>: 建議設定15-20%的停損點</li>
+        <li><strong>資金分配</strong>: 單一股票不超過總資金的5%</li>
+        <li><strong>分散投資</strong>: 選擇5-10支不同產業的優質股票</li>
+        <li><strong>定期檢視</strong>: 每月檢視策略表現並調整</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107;">
+    <h4>🔧 策略優化建議</h4>
+    <ul>
+        <li><strong>參數調整</strong>: 可測試不同的移動平均期間和標準差倍數</li>
+        <li><strong>基本面篩選</strong>: 結合ROE、EPS等財務指標預先篩選</li>
+        <li><strong>市場環境</strong>: 考慮牛熊市環境調整策略</li>
+        <li><strong>成本考量</strong>: 加入手續費和滑價成本的真實回測</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 下載結果
+    st.subheader("📥 下載結果")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if len(profitable_df) > 0:
+            csv_data = profitable_df.to_csv(index=False)
+            st.download_button(
+                label="📥 下載優質股票清單 (CSV)",
+                data=csv_data,
+                file_name=f"profitable_stocks_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                help="下載報酬率≥10%的股票清單"
+            )
+    
+    with col2:
+        # 檢查是否有分析報告
+        report_files = glob.glob('backtest_analysis_report_*.md')
+        if report_files:
+            latest_report = max(report_files, key=os.path.getctime)
+            try:
+                with open(latest_report, 'r', encoding='utf-8') as f:
+                    report_content = f.read()
+                
+                st.download_button(
+                    label="📄 下載詳細分析報告 (MD)",
+                    data=report_content,
+                    file_name=f"backtest_analysis_report_{datetime.now().strftime('%Y%m%d')}.md",
+                    mime="text/markdown",
+                    help="下載完整的回測分析報告"
+                )
+            except:
+                st.info("分析報告文件讀取失敗")
+    
+    # 免責聲明
+    st.markdown("---")
+    st.markdown("""
+    <div style="background-color: #f8d7da; padding: 15px; border-radius: 10px; border-left: 5px solid #dc3545;">
+    <h4>⚠️ 免責聲明</h4>
+    <p>本回測結果僅供學術研究和教育用途，不構成投資建議。投資有風險，過去績效不代表未來表現。實際投資前請：</p>
+    <ul>
+        <li>進行充分的基本面分析</li>
+        <li>考慮個人風險承受能力</li>
+        <li>諮詢專業投資顧問</li>
+        <li>分散投資降低風險</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+def show_version_updates():
+    """版本更新頁面"""
+    st.markdown('<div class="page-header">🔄 版本更新歷史</div>', unsafe_allow_html=True)
+    
+    # 版本更新說明
+    st.markdown("""
+    <div style="background-color: #f0f8ff; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+    <h4>📋 關於版本更新</h4>
+    <p>這裡記錄了台灣股票分析平台的所有重要更新和功能改進。我們持續優化平台功能，為用戶提供更好的股票分析體驗。</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 版本更新時間線
+    st.subheader("📅 版本更新時間線")
+    
+    # 版本 3.0.0 - 當前版本
+    with st.expander("🚀 版本 3.0.0 - 完整功能版本 (2024年12月)", expanded=True):
+        st.markdown("""
+        ### ✨ 主要新功能
+        - 🔄 **版本更新頁面**: 新增版本更新歷史查看功能
+        - 📈 **投資組合分析**: 完整的投資組合管理和分析功能
+        - 🎯 **策略優化**: 布林通道策略參數優化
+        - 📊 **數據視覺化增強**: 更豐富的圖表和分析工具
+        
+        ### 🔧 功能改進
+        - ⚡ 提升數據載入速度
+        - 🎨 優化用戶界面設計
+        - 📱 改善響應式布局
+        - 🔍 增強股票搜尋功能
+        
+        ### 🐛 問題修復
+        - 修復數據篩選的邊界條件問題
+        - 解決圖表顯示異常
+        - 優化記憶體使用效率
+        
+        ### 📊 數據更新
+        - 更新至726支股票的完整財務數據
+        - 443支股票的3年歷史價格數據
+        - 改進數據準確性和完整性
+        """)
+    
+    # 版本 2.5.0
+    with st.expander("📊 版本 2.5.0 - 策略回測增強版 (2024年11月)"):
+        st.markdown("""
+        ### ✨ 主要新功能
+        - 🎯 **布林通道策略回測**: 完整的技術分析策略回測系統
+        - 📈 **股價走勢圖**: 清晰的價格圖表和技術指標
+        - 💰 **投資組合追蹤**: 實時計算策略表現和報酬率
+        - 📋 **交易記錄**: 詳細的買賣點記錄和分析
+        
+        ### 🔧 功能改進
+        - 🔄 策略與買入持有的表現對比
+        - 🎛️ 靈活的策略參數自訂功能
+        - 📊 增強的數據視覺化
+        - ⚡ 本地TWSE數據庫快速查詢
+        
+        ### 📊 數據更新
+        - 建立本地TWSE數據庫
+        - 443支股票的歷史價格數據
+        - 支援1年、2年、3年、5年回測期間
+        """)
+    
+    # 版本 2.0.0
+    with st.expander("🔍 版本 2.0.0 - 股票篩選工具 (2024年10月)"):
+        st.markdown("""
+        ### ✨ 主要新功能
+        - 🔍 **智能股票篩選**: 基於ROE、EPS、營收成長率等指標
+        - 🎛️ **滑動條界面**: 直觀的拖拉調整篩選條件
+        - ⚡ **快速預設策略**: 積極成長、價值投資、保守投資等
+        - 📈 **數據視覺化**: 互動式散點圖和分布圖
+        
+        ### 🔧 功能改進
+        - 📋 完整的726支台灣股票財務數據
+        - 🔍 股票搜尋和篩選功能
+        - 📊 統計指標卡片顯示
+        - 💾 篩選結果CSV下載
+        
+        ### 🎨 界面優化
+        - 現代化設計風格
+        - 響應式布局設計
+        - 自定義CSS樣式
+        - 直觀的操作流程
+        """)
+    
+    # 版本 1.5.0
+    with st.expander("🌐 版本 1.5.0 - 雲端部署版 (2024年9月)"):
+        st.markdown("""
+        ### ✨ 主要新功能
+        - 🌐 **Streamlit Cloud部署**: 支援雲端訪問
+        - 🔄 **自動化部署**: GitHub集成自動部署
+        - 📊 **數據更新機制**: 自動化數據更新和同步
+        - 📋 **完整文檔**: 詳細的使用和部署指南
+        
+        ### 🔧 功能改進
+        - ⚡ 優化應用啟動速度
+        - 🔍 改善數據載入機制
+        - 📱 移動端適配優化
+        - 🛡️ 增強錯誤處理機制
+        
+        ### 📄 文檔完善
+        - 部署指南 (DEPLOYMENT_GUIDE.md)
+        - 數據更新指南 (DATA_UPDATE_GUIDE.md)
+        - 策略回測指南 (STRATEGY_BACKTEST_GUIDE.md)
+        - 專案總結 (PROJECT_SUMMARY.md)
+        """)
+    
+    # 版本 1.0.0
+    with st.expander("🎉 版本 1.0.0 - 初始版本 (2024年8月)"):
+        st.markdown("""
+        ### ✨ 核心功能
+        - 📊 **基礎股票分析**: 台灣股票基本面數據分析
+        - 🕷️ **數據爬蟲**: 從TWSE官方API獲取股票數據
+        - 🎨 **Streamlit界面**: 基於Web的用戶界面
+        - 📋 **數據處理**: Pandas數據處理和分析
+        
+        ### 🔧 技術架構
+        - Python 3.8+ 支援
+        - Streamlit Web框架
+        - Pandas 數據處理
+        - Plotly 數據視覺化
+        
+        ### 📊 初始數據
+        - 50支台灣知名股票示例數據
+        - 基本財務指標
+        - 簡單篩選功能
+        """)
+    
+    # 統計信息
+    st.subheader("📊 平台統計")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric(
+            "當前版本",
+            "3.0.0",
+            delta="最新"
+        )
+    
+    with col2:
+        st.metric(
+            "總更新次數",
+            "5",
+            delta="+1"
+        )
+    
+    with col3:
+        st.metric(
+            "功能模組",
+            "4",
+            delta="完整"
+        )
+    
+    with col4:
+        st.metric(
+            "開發時間",
+            "4個月",
+            delta="持續更新"
+        )
+    
+    # 未來規劃
+    st.subheader("🚀 未來規劃")
+    
+    st.markdown("""
+    <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107;">
+    <h4>🔮 版本 4.0.0 規劃中</h4>
+    <ul>
+        <li>🤖 <strong>機器學習預測</strong>: 股價趨勢預測模型</li>
+        <li>📱 <strong>移動端優化</strong>: 更好的手機端體驗</li>
+        <li>🔔 <strong>即時通知</strong>: 股票價格和策略信號提醒</li>
+        <li>🌍 <strong>多市場支援</strong>: 擴展至美股、港股等市場</li>
+        <li>🔗 <strong>API接口</strong>: 提供程式化交易接口</li>
+        <li>👥 <strong>用戶系統</strong>: 個人化設定和投資組合保存</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 技術債務和改進計劃
+    st.subheader("🔧 技術改進計劃")
+    
+    improvement_data = {
+        "改進項目": [
+            "效能優化",
+            "快取機制",
+            "多語言支援",
+            "單元測試",
+            "API文檔",
+            "安全性增強"
+        ],
+        "優先級": [
+            "高",
+            "高",
+            "中",
+            "中",
+            "低",
+            "高"
+        ],
+        "預計完成": [
+            "v3.1.0",
+            "v3.1.0",
+            "v4.0.0",
+            "v3.2.0",
+            "v4.0.0",
+            "v3.1.0"
+        ],
+        "狀態": [
+            "進行中",
+            "計劃中",
+            "計劃中",
+            "計劃中",
+            "計劃中",
+            "進行中"
+        ]
+    }
+    
+    st.dataframe(pd.DataFrame(improvement_data), use_container_width=True)
+    
+    # 意見回饋
+    st.subheader("💬 意見回饋")
+    
+    st.markdown("""
+    <div style="background-color: #d4edda; padding: 15px; border-radius: 10px; border-left: 5px solid #28a745;">
+    <h4>📝 我們重視您的意見</h4>
+    <p>如果您有任何功能建議、問題回報或改進意見，歡迎透過以下方式聯繫我們：</p>
+    <ul>
+        <li>🐛 <strong>GitHub Issues</strong>: 回報問題和建議功能</li>
+        <li>💡 <strong>功能建議</strong>: 提出新功能想法</li>
+        <li>🔧 <strong>貢獻代碼</strong>: 歡迎提交 Pull Request</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 更新日誌下載
+    st.subheader("📥 更新日誌")
+    
+    changelog_content = """
+# 台灣股票分析平台 - 更新日誌
+
+## 版本 3.0.0 (2024-12-XX)
+### 新功能
+- 版本更新頁面
+- 投資組合分析功能
+- 策略參數優化
+
+### 改進
+- 數據載入速度提升
+- 界面設計優化
+- 響應式布局改善
+
+### 修復
+- 數據篩選邊界條件
+- 圖表顯示異常
+- 記憶體使用優化
+
+## 版本 2.5.0 (2024-11-XX)
+### 新功能
+- 布林通道策略回測
+- 股價走勢圖
+- 投資組合追蹤
+
+### 改進
+- 策略表現對比
+- 參數自訂功能
+- 數據視覺化增強
+
+## 版本 2.0.0 (2024-10-XX)
+### 新功能
+- 智能股票篩選
+- 滑動條界面
+- 快速預設策略
+
+### 改進
+- 726支股票數據
+- 搜尋篩選功能
+- 統計指標顯示
+
+## 版本 1.5.0 (2024-09-XX)
+### 新功能
+- Streamlit Cloud部署
+- 自動化部署
+- 數據更新機制
+
+### 改進
+- 啟動速度優化
+- 數據載入機制
+- 錯誤處理增強
+
+## 版本 1.0.0 (2024-08-XX)
+### 初始功能
+- 基礎股票分析
+- 數據爬蟲
+- Streamlit界面
+- 數據處理
+"""
+    
+    st.download_button(
+        label="📥 下載完整更新日誌",
+        data=changelog_content,
+        file_name="changelog.md",
+        mime="text/markdown",
+        help="下載完整的版本更新日誌文件"
+    )
 
 if __name__ == "__main__":
     main() 
