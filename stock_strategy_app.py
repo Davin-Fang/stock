@@ -913,7 +913,7 @@ def show_backtest_results_ui(backtest_result, stock_code, stock_name, strategy_n
                     with col4:
                         st.metric("最大虧損", f"{min_return:.2f}%")
 
-def show_individual_backtest(stock_data):
+def show_single_stock_backtest_page(stock_data):
     """個股策略回測頁面"""
     st.markdown('<div class="page-header">📊 個股策略回測</div>', unsafe_allow_html=True)
     
@@ -943,28 +943,51 @@ def show_individual_backtest(stock_data):
         
         return
     
-    # 顯示數據庫狀態 - 修正顯示766支股票
+    # 顯示數據庫狀態
     total_stocks_in_db = len(stock_data) if stock_data is not None else 765
     st.success(f"✅ 本地數據庫已載入 {len(available_stocks)} 支股票的價格數據")
     st.info(f"📊 完整股票資料庫：{total_stocks_in_db} 支股票 | 可回測股票：{len(available_stocks)} 支")
     
-    # 新增：選擇回測模式
-    st.subheader("🎯 選擇回測模式")
+    # 直接顯示單股回測功能
+    show_single_stock_backtest(stock_data, available_stocks)
+
+def show_batch_backtest_page(stock_data):
+    """批量回測頁面"""
+    st.markdown('<div class="page-header">🎯 批量回測</div>', unsafe_allow_html=True)
     
-    backtest_mode = st.radio(
-        "選擇回測方式:",
-        ["📊 單股回測", "🎯 批量回測"],
-        horizontal=True,
-        help="選擇要進行單一股票回測還是批量回測多支股票"
-    )
+    # 載入本地數據庫
+    available_stocks = get_available_stocks()
     
-    if backtest_mode == "📊 單股回測":
-        # 原有的單股回測功能
-        show_single_stock_backtest(stock_data, available_stocks)
+    if not available_stocks:
+        st.warning("⚠️ 本地TWSE數據庫為空！")
+        st.info("請先下載股票數據：")
+        with st.expander("📥 如何下載數據", expanded=True):
+            st.markdown("""
+            **步驟 1: 運行數據下載器**
+            ```bash
+            python twse_data_downloader.py
+            ```
+            
+            **步驟 2: 選擇下載選項**
+            - 選項 1: 下載所有股票數據 (推薦)
+            - 選項 2: 查看可用股票
+            - 選項 3: 下載單一股票
+            
+            **注意事項:**
+            - 首次下載可能需要較長時間
+            - 數據會保存在 `data/stock_prices/` 目錄
+            - 支援增量更新，避免重複下載
+            """)
+        
+        return
     
-    elif backtest_mode == "🎯 批量回測":
-        # 新增的批量回測功能
-        show_batch_backtest_execution(stock_data, available_stocks)
+    # 顯示數據庫狀態
+    total_stocks_in_db = len(stock_data) if stock_data is not None else 765
+    st.success(f"✅ 本地數據庫已載入 {len(available_stocks)} 支股票的價格數據")
+    st.info(f"📊 完整股票資料庫：{total_stocks_in_db} 支股票 | 可回測股票：{len(available_stocks)} 支")
+    
+    # 直接顯示批量回測功能
+    show_batch_backtest_execution(stock_data, available_stocks)
 
 def show_single_stock_backtest(stock_data, available_stocks):
     """單股回測功能"""
@@ -2407,7 +2430,8 @@ def main():
         [
             "🔍 股票篩選工具",
             "📊 個股策略回測", 
-            "🎯 批量回測結果",
+            "🎯 批量回測",
+            "📋 批量回測結果",
             "📈 投資組合分析"
         ]
     )
@@ -2417,9 +2441,12 @@ def main():
         show_stock_filter(stock_data)
     
     elif page == "📊 個股策略回測":
-        show_individual_backtest(stock_data)
+        show_single_stock_backtest_page(stock_data)
     
-    elif page == "🎯 批量回測結果":
+    elif page == "🎯 批量回測":
+        show_batch_backtest_page(stock_data)
+    
+    elif page == "📋 批量回測結果":
         show_batch_backtest(stock_data)
     
     elif page == "📈 投資組合分析":
