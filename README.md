@@ -58,7 +58,7 @@
 - **技術指標**: MA10、MA20、MA60、20日高點、成交量分析
 
 ### 🏠 本地TWSE數據庫支援
-- ✅ 支援443支股票的本地歷史數據
+- ✅ 支援632支股票的本地歷史數據（已更新）
 - ✅ 無需網路連線，快速數據載入
 - ✅ 完整的錯誤處理和數據驗證
 - ✅ 數據庫狀態監控和統計顯示
@@ -102,8 +102,8 @@
 - **🔄 數據更新機制**: 自動化數據更新和部署
 
 ### 📊 數據完整性
-- **財務數據**: 726支台灣股票完整基本面數據 ✅
-- **價格數據**: 443支股票，每支約728筆交易記錄（3年歷史）✅
+- **財務數據**: 767支台灣股票完整基本面數據 ✅
+- **價格數據**: 632支股票，每支約728筆交易記錄（3年歷史）✅
 - **數據源**: TWSE官方API，確保數據準確性 ✅
 - **更新機制**: 支援手動和自動更新 ✅
 
@@ -142,7 +142,7 @@
 
 ### 💾 本地TWSE數據庫
 - 🏦 **官方數據源**: 直接從台灣證券交易所API獲取
-- 💾 **本地存儲**: 443支股票的3年歷史價格數據
+- 💾 **本地存儲**: 632支股票的3年歷史價格數據（已更新）
 - ⚡ **快速查詢**: 無需網路連線，即時數據載入
 - 🔄 **增量更新**: 支援數據自動更新和同步
 
@@ -282,25 +282,63 @@ export STREAMLIT_SERVER_ENABLE_CORS=false
 
 ```bash
 # 克隆專案
-git clone [repository-url]
+git clone https://github.com/Davin-Fang/stock.git
 cd stock-crowd
 
 # 安裝依賴
 pip install -r requirements.txt
-
-# 啟動應用
-streamlit run stock_strategy_app.py
 ```
 
-### 或使用Python模組方式啟動
+### 🚀 啟動應用
+
+**⚠️ 重要提醒：不同系統的Streamlit啟動命令**
+
+如果直接使用 `streamlit` 命令失敗，請嘗試以下方法：
+
 ```bash
+# 方法1：直接命令（推薦）
+streamlit run stock_strategy_app.py
+
+# 方法2：如果上述命令失敗，使用Python模組方式（推薦）
 python -m streamlit run stock_strategy_app.py
+
+# 方法3：Windows PowerShell可能需要的完整路徑
+python.exe -m streamlit run stock_strategy_app.py
 ```
+
+**常見問題解決：**
+- ❌ 如果出現 `'streamlit' 不是內部或外部命令` 錯誤 → 使用方法2
+- ❌ 如果出現 `無法辨識 'streamlit' 詞彙` 錯誤 → 使用方法2或3  
+- ❌ 如果出現 `CommandNotFoundException` 錯誤 → 使用方法2
+- ✅ 確保已正確安裝Streamlit：`pip install streamlit`
+
+**成功啟動後：**
+- 🌐 應用將在 http://localhost:8501 啟動
+- 📱 瀏覽器會自動開啟應用頁面
+- 🔄 修改代碼後會自動重新載入
 
 ## 📊 數據準備
 
 ### 方法1: 使用現有數據（推薦）
-專案已包含443支股票的完整歷史數據，可直接使用。
+專案已包含632支股票的完整歷史數據，可直接使用。
+
+**📁 數據文件結構：**
+```
+data/
+├── processed/                     # 財務數據（767支股票）
+│   ├── hybrid_real_stock_data_*.csv
+│   ├── fixed_real_stock_data_*.csv
+│   └── taiwan_all_stocks_complete_*.csv
+└── stock_prices/                  # 價格數據（632支股票）
+    ├── 2330_price_data.csv       # 台積電
+    ├── 2317_price_data.csv       # 鴻海
+    └── ...                       # 其他股票
+```
+
+**🔄 數據同步狀態：**
+- ✅ 所有核心數據文件已同步到GitHub
+- ✅ Streamlit Cloud可直接使用，無需額外下載
+- ✅ 本地運行和雲端部署使用相同數據源
 
 ### 方法2: 下載最新數據
 ```bash
@@ -312,6 +350,11 @@ python twse_data_downloader.py
 # 2. 查看可用股票
 # 3. 下載單一股票
 ```
+
+**⚠️ 注意事項：**
+- 首次下載可能需要30-60分鐘
+- 建議使用現有數據，除非需要最新數據
+- 下載完成後數據會自動保存到對應目錄
 
 ## 🎯 使用指南
 

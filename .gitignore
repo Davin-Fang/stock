@@ -60,8 +60,20 @@ data/raw/*
 data/cache/*
 !data/cache/.gitkeep
 
-# 運行時生成的文件
-*.csv
+# 運行時生成的文件 (排除核心數據文件)
+# 保留核心數據文件供Streamlit Cloud使用
+!data/processed/hybrid_real_stock_data_*.csv
+!data/processed/fixed_real_stock_data_*.csv
+!data/processed/taiwan_all_stocks_complete_*.csv
+!data/stock_prices/*.csv
+
+# 排除臨時生成的回測結果文件
+*backtest_results*.csv
+*batch_backtest*.csv
+*online_backtest*.csv
+*multi_strategy_backtest*.csv
+
+# 保留示例和重要數據文件
 !*sample*.csv
 !taiwan_stock_sample*.csv
 
