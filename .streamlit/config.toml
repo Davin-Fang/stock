@@ -11,6 +11,9 @@ disableWatchdogWarning = false
 # Default: true
 showWarningOnDirectExecution = true
 
+# 開發模式設定
+developmentMode = false
+
 [server]
 
 # List of folders that should not be watched for changes. This impacts both the
@@ -42,7 +45,8 @@ headless = true
 
 # Automatically rerun script when the file is modified on disk.
 # Default: false
-runOnSave = false
+runOnSave = true
+allowRunOnSave = true
 
 # The address where the server will listen for client and browser connections.
 # Use this if you want to bind the server to a specific address.
@@ -136,4 +140,8 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
 
 # Color used for almost all text.
-textColor = "#262730" 
+textColor = "#262730"
+
+[client]
+# 客戶端設定
+toolbarMode = "minimal" 
