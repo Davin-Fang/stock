@@ -2759,5 +2759,4 @@ def display_intraday_strategy_results(result, strategy_name):
     st.markdown(summary_text)
 
 if __name__ == "__main__":
-    main() #   D a t a   u p d a t e d   o n   0 6 / 2 1 / 2 0 2 5   2 2 : 0 5 : 3 0  
- 
+    main() 
