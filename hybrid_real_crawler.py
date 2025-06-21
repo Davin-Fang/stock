@@ -97,10 +97,10 @@ class HybridRealCrawler:
         """檢查並嘗試使用 twstock 套件"""
         try:
             import twstock
-            self.log_message("✅ twstock 套件可用")
+            self.log_message("[OK] twstock 套件可用")
             return True
         except ImportError:
-            self.log_message("⚠️ twstock 套件未安裝，將嘗試其他數據來源")
+            self.log_message("[WARNING] twstock 套件不可用，將使用其他數據源")
             try:
                 import subprocess
                 import sys
@@ -635,11 +635,11 @@ def main():
     print("混合式台灣股票真實數據爬蟲")
     print("=" * 60)
     print("特色：")
-    print("✓ 結合 twstock 套件獲取歷史交易數據")
-    print("✓ 使用台股即時資訊 API 獲取當前股價")
-    print("✓ 智能估算財務指標 (ROE、EPS、成長率)")
-    print("✓ 基於真實市場數據進行估算")
-    print("✓ 完全與股票分析工具兼容")
+    print("- 結合 twstock 套件獲取歷史交易數據")
+    print("- 使用台股即時資訊 API 獲取當前股價")
+    print("- 智能估算財務指標 (ROE、EPS、成長率)")
+    print("- 基於真實市場數據進行估算")
+    print("- 完全與股票分析工具兼容")
     print("=" * 60)
     
     crawler = HybridRealCrawler()
