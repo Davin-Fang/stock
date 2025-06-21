@@ -167,8 +167,8 @@ st.markdown("""
 def load_stock_data():
     """載入股票篩選數據"""
     data_patterns = [
-        'data/processed/fixed_real_stock_data_*.csv',
         'data/processed/hybrid_real_stock_data_*.csv',
+        'data/processed/fixed_real_stock_data_*.csv',
         'data/processed/taiwan_all_stocks_complete_*.csv',
         'data/*stock_data_*.csv',
         '*stock_data_*.csv'
