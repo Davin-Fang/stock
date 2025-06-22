@@ -165,7 +165,7 @@ st.markdown("""
 # 載入股票數據
 @st.cache_data
 def load_stock_data():
-    """載入股票篩選數據"""
+    """載入股票篩選數據 - 優先載入最新且完整的數據文件"""
     data_patterns = [
         'data/processed/hybrid_real_stock_data_*.csv',
         'data/processed/fixed_real_stock_data_*.csv',
@@ -174,25 +174,98 @@ def load_stock_data():
         '*stock_data_*.csv'
     ]
     
-    latest_file = None
+    best_file = None
+    best_score = 0
+    
     for pattern in data_patterns:
         files = glob.glob(pattern)
-        if files:
-            latest_file = max(files, key=os.path.getctime)
-            break
+        for file_path in files:
+            try:
+                # 獲取文件大小
+                file_size = os.path.getsize(file_path)
+                
+                # 快速檢查文件行數（讀取前幾行來估算）
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    line_count = len(lines)
+                
+                # 計算文件質量分數
+                score = 0
+                
+                # 1. 文件大小分數 (50KB以上加分)
+                if file_size > 50000:  # 50KB
+                    score += 1000
+                
+                # 2. 行數分數 (500行以上大幅加分)
+                if line_count > 500:
+                    score += 2000
+                elif line_count > 100:
+                    score += 500
+                
+                # 3. 檔名時間戳分數 (提取檔名中的時間戳)
+                filename = os.path.basename(file_path)
+                if 'hybrid_real_stock_data_' in filename:
+                    score += 100  # hybrid_real 檔案優先
+                    # 提取時間戳 YYYYMMDD_HHMMSS
+                    import re
+                    timestamp_match = re.search(r'(\d{8}_\d{6})', filename)
+                    if timestamp_match:
+                        timestamp = timestamp_match.group(1)
+                        # 將時間戳轉換為數值進行比較
+                        try:
+                            timestamp_value = int(timestamp.replace('_', ''))
+                            score += timestamp_value // 1000000  # 縮放時間戳
+                        except:
+                            pass
+                
+                # 4. 文件創建時間分數
+                try:
+                    ctime = os.path.getctime(file_path)
+                    score += int(ctime) // 1000000  # 縮放創建時間
+                except:
+                    pass
+                
+                # 更新最佳文件
+                if score > best_score:
+                    best_score = score
+                    best_file = file_path
+                    
+            except Exception as e:
+                continue
     
-    if latest_file:
+    if best_file:
         try:
-            df = pd.read_csv(latest_file)
-            # 檢查數據質量，如果股票數量少於100支，使用示例數據
+            st.sidebar.info(f"🔍 選中數據文件: {os.path.basename(best_file)}")
+            st.sidebar.info(f"📊 文件大小: {os.path.getsize(best_file) / 1024:.1f} KB")
+            
+            df = pd.read_csv(best_file)
+            
+            # 強化數據質量檢查
             if len(df) < 100:
-                st.sidebar.warning(f"⚠️ 數據文件 {os.path.basename(latest_file)} 只有 {len(df)} 支股票，使用示例數據")
+                st.sidebar.warning(f"⚠️ 數據文件 {os.path.basename(best_file)} 只有 {len(df)} 支股票")
+                st.sidebar.warning("⚠️ 數據量不足，切換到示例數據模式")
                 return generate_demo_stock_data()
-            st.sidebar.success(f"✅ 載入數據文件: {os.path.basename(latest_file)}")
+            elif len(df) < 500:
+                st.sidebar.warning(f"⚠️ 數據文件 {os.path.basename(best_file)} 只有 {len(df)} 支股票")
+                st.sidebar.info("ℹ️ 建議更新到完整數據版本")
+            
+            st.sidebar.success(f"✅ 載入數據文件: {os.path.basename(best_file)}")
             st.sidebar.info(f"📊 股票數量: {len(df)}")
+            
+            # 檢查數據文件是否為最新版本
+            filename = os.path.basename(best_file)
+            if '20250613' in filename:
+                st.sidebar.success("🎉 使用最新版本數據 (2025-06-13)")
+            elif '20250530' in filename or '20250529' in filename:
+                st.sidebar.info("📅 使用較新版本數據 (2025-05-30)")
+            elif '20250527' in filename:
+                st.sidebar.warning("⚠️ 使用較舊版本數據 (2025-05-27)")
+            
             return df
+            
         except Exception as e:
             st.sidebar.error(f"❌ 讀取數據失敗: {str(e)}")
+            st.sidebar.warning("⚠️ 自動切換到示例數據模式")
             return generate_demo_stock_data()
     else:
         st.sidebar.warning("⚠️ 找不到本地數據文件，使用示例數據")
@@ -2614,39 +2687,39 @@ def main():
     st.markdown("""
     <div style="text-align: center; margin-bottom: 1rem;">
         <span style="background: linear-gradient(135deg, #1f77b4, #2e86ab); color: white; padding: 0.3rem 1rem; border-radius: 20px; font-size: 0.9rem; font-weight: bold;">
-            🚀 版本 v3.4.0 - 雲端優化版
+            🚀 版本 v3.5.0 - 完整數據版
         </span>
     </div>
     """, unsafe_allow_html=True)
     
     # 最新更新提示
-    with st.expander("🔥 v3.4.0 最新更新", expanded=False):
+    with st.expander("🔥 v3.5.0 最新更新", expanded=False):
         st.markdown("""
-        ### ✨ 雲端版本重大優化
+        ### ✨ 智能數據選擇系統
         
         **🎯 核心改進:**
-        - ✅ **完整示例數據**: 雲端版本現包含40支精選台灣股票
-        - ✅ **智能數據回退**: 自動檢測數據質量，確保最佳用戶體驗
-        - ✅ **模擬價格數據**: 為每支股票生成真實的OHLC歷史數據
-        - ✅ **策略回測支援**: 所有策略在雲端版本都能正常運行
+        - ✅ **智能數據選擇**: 自動選擇最新且完整的數據文件
+        - ✅ **強化質量檢查**: 多維度評估數據文件品質
+        - ✅ **完整數據支援**: 優先載入767支股票完整數據
+        - ✅ **版本識別系統**: 自動識別並提示數據版本
         
         **📊 數據規模:**
-        - 股票篩選: 40支精選股票 (涵蓋各主要產業)
-        - 價格數據: 支援1年、2年、3年、5年期間回測
+        - 股票篩選: 767支完整股票 (優先載入最新完整數據)
+        - 價格數據: 632支股票歷史價格數據
         - 策略支援: 布林通道、突破策略、日內交易策略
         
-        **🌐 雲端 vs 本地對比:**
-        | 功能 | 雲端演示版 | 本地完整版 |
-        |------|-----------|-----------|
-        | 股票篩選 | ✅ 40支精選股票 | ✅ 767支完整股票 |
-        | 個股回測 | ✅ 完整功能 | ✅ 632支股票數據 |
-        | 批量回測 | ✅ 演示功能 | ✅ 完整批量分析 |
-        | 投資組合 | ✅ 完整功能 | ✅ 完整功能 |
+        **🎯 數據選擇邏輯:**
+        | 評估標準 | 權重 | 說明 |
+        |---------|------|------|
+        | 文件大小 | 高 | >50KB 優先選擇 |
+        | 數據行數 | 最高 | >500行 大幅加分 |
+        | 檔名時間戳 | 中 | 越新越優先 |
+        | 文件類型 | 中 | hybrid_real 優先 |
         
         **💡 使用提示:**
-        - 雲端版本適合學習和演示
-        - 本地版本提供完整的投資分析功能
-        - 所有策略邏輯和計算方式完全相同
+        - 系統自動選擇最新且最完整的數據文件
+        - 支援雲端和本地環境的智能適配
+        - 透明的數據來源和版本提示
         """)
     
     st.markdown("---")
